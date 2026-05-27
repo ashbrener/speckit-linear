@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ashbrener/speckit-linear/specs/001-spec-kit-linear-bridge/contracts/config-schema.json",
+  "title": "speckit-linear per-consumer-repo config",
+  "description": "Schema for .specify/extensions/linear/linear-config.yml. Mirrors config-template.yml. Locks the per-repo Linear binding (Team UUID + Project UUID + workflow_state_uuids map) plus operator-tweakable sync toggles, webhook installation status, and local git-hook installation status. Loaded by src/config.sh at the start of every reconcile; validation failures abort the run with exit code 2 per FR-022.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "config_version",
+    "linear",
+    "sync",
+    "webhook",
+    "git_hooks"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Template schema version. Bumped when the shape of this file changes (breaking).",
+      "const": 1
+    },
+    "config_version": {
+      "type": "integer",
+      "description": "Operator-edit counter. Bumped by hand if the operator hand-edits any field; informational only, not enforced.",
+      "minimum": 1
+    },
+    "linear": {
+      "type": "object",
+      "description": "The Linear binding. All UUIDs MUST be present and well-formed before src/reconcile.sh issues any mutation (FR-002, FR-032, Principle V).",
+      "additionalProperties": false,
+      "required": [
+        "workspace",
+        "team",
+        "project",
+        "workflow_state_uuids"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "object",
+          "description": "Workspace identity. Informational only; the OAuth token / API key implicitly scopes to one workspace.",
+          "additionalProperties": false,
+          "required": ["name", "url_key"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Human-readable workspace name as shown in the Linear UI.",
+              "minLength": 1
+            },
+            "url_key": {
+              "type": "string",
+              "description": "Workspace URL slug (the subdomain segment in linear.app/<slug>/).",
+              "pattern": "^[a-z0-9-]+$",
+              "minLength": 1
+            }
+          }
+        },
+        "team": {
+          "type": "object",
+          "description": "Owning Linear Team. The bridge writes every spec Issue and task-phase sub-issue into this Team (FR-002).",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Team UUID. Authoritative lookup key — name changes in Linear UI MUST NOT break the bridge.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "key": {
+              "type": "string",
+              "description": "Linear team key (e.g. 'OSH'). Informational; surfaced in Linear identifiers like OSH-123. Not used for lookup.",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "description": "Team display name. Informational.",
+              "minLength": 1
+            }
+          }
+        },
+        "project": {
+          "type": "object",
+          "description": "The Linear Project that represents this consumer repo. Exactly one Project per repo (FR-002).",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Project UUID. Authoritative lookup key. Resolved at install time; never inferred at reconcile time.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "name": {
+              "type": "string",
+              "description": "Project display name. Informational; may drift from Linear UI without breaking sync.",
+              "minLength": 1
+            }
+          }
+        },
+        "workflow_state_uuids": {
+          "type": "object",
+          "description": "Map of lifecycle-phase key to Linear workflow-state UUID, captured by speckit.linear.seed at workspace-seed time (FR-021, FR-032). All nine keys MUST be present and well-formed UUIDs. Lookup is by UUID, never by name — Linear UI renames are safe; deletion of a referenced state surfaces as an explicit error at reconcile time.",
+          "additionalProperties": false,
+          "required": [
+            "specifying",
+            "clarifying",
+            "planning",
+            "tasking",
+            "red_team",
+            "implementing",
+            "analyzing",
+            "ready_to_merge",
+            "merged"
+          ],
+          "properties": {
+            "specifying": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Specifying' lifecycle phase (state-type: unstarted).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "clarifying": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Clarifying' phase (state-type: unstarted).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "planning": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Planning' phase (state-type: unstarted).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "tasking": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Tasking' phase (state-type: unstarted).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "red_team": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Red-team' phase (state-type: unstarted). Mirrors the optional speckit-red-team extension's gate phase.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "implementing": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Implementing' phase (state-type: started).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "analyzing": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Analyzing' phase (state-type: started).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "ready_to_merge": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Ready-to-merge' phase (state-type: started). Flipped by Layer E (GitHub Action) on PR opened / ready_for_review per FR-028.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "merged": {
+              "type": "string",
+              "description": "Workflow-state UUID for the 'Merged' phase (state-type: completed). Flipped by Layer E on PR closed with merged=true per FR-028.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "description": "Operator-tweakable sync behaviour toggles. Defaults baked into the template; consult linear-config.yml before each reconcile.",
+      "additionalProperties": false,
+      "required": ["enabled", "idle_window_days", "emit_summary"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master kill-switch for hook-driven syncs. When false, /speckit-* after_* hooks skip Linear writes; speckit.linear.push still works on demand. Defaults to true.",
+          "default": true
+        },
+        "idle_window_days": {
+          "type": "integer",
+          "description": "Days of filesystem inactivity (no touched spec) before the repo's Project Status flips to 'Paused' per FR-002. 0 disables the auto-flip; operator must use save_project manually.",
+          "minimum": 0,
+          "default": 30
+        },
+        "emit_summary": {
+          "type": "boolean",
+          "description": "Whether the structured reconcile summary (FR-023) is printed to stderr on every run. Defaults to true; set false only for CI parity with quiet modes.",
+          "default": true
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "description": "Layer E (GitHub Action) installation status (FR-027, FR-029). Populated by speckit.linear.install when the operator opts in.",
+      "additionalProperties": false,
+      "required": ["installed", "workflow_path", "secret_name"],
+      "properties": {
+        "installed": {
+          "type": "boolean",
+          "description": "True after speckit.linear.install has dropped templates/github-action.yml into .github/workflows/. Flipped manually if the operator removes the workflow.",
+          "default": false
+        },
+        "workflow_path": {
+          "type": "string",
+          "description": "Repo-relative path to the installed Action workflow. Locked by FR-027; never customise.",
+          "const": ".github/workflows/speckit-linear-sync.yml"
+        },
+        "secret_name": {
+          "type": "string",
+          "description": "GitHub repository secret name holding the Linear API token. Locked by FR-029; never customise.",
+          "const": "LINEAR_API_TOKEN"
+        }
+      }
+    },
+    "git_hooks": {
+      "type": "object",
+      "description": "Local git-hook installation status (FR-033). Populated by speckit.linear.install. Because .git/hooks/ is not versioned, this section is per-clone and re-verified by speckit.linear.install on every run.",
+      "additionalProperties": false,
+      "required": ["installed", "hooks"],
+      "properties": {
+        "installed": {
+          "type": "boolean",
+          "description": "True after the post-checkout / post-commit / post-merge hooks have been written into .git/hooks/. Verified by speckit.linear.install on every install run.",
+          "default": false
+        },
+        "hooks": {
+          "type": "array",
+          "description": "List of git hook names this extension installs. Locked to exactly the three FR-033 names.",
+          "items": {
+            "type": "string",
+            "enum": ["post-checkout", "post-commit", "post-merge"]
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}
