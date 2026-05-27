@@ -1,0 +1,40 @@
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# OS detritus
+.DS_Store
+Thumbs.db
+
+# Editor / tooling
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code local-only settings (skills under .claude/skills/ are tracked)
+.claude/settings.local.json
+
+# Python build artefacts (in case the bridge ships a Python implementation)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node build artefacts (in case the bridge ships a Node implementation)
+node_modules/
+dist/
+build/
+*.log
+.npm/
+.yarn/
+
+# Spec-kit ephemera
+.specify/cache/
