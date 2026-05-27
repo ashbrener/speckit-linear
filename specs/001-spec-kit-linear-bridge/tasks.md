@@ -21,30 +21,30 @@
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Create the bridge's source-tree skeleton: `src/`, `commands/`, `templates/git-hooks/`, `tests/unit/`, `tests/integration/`, `tests/fixtures/specs/` per `plan.md` §Project Structure
+- [x] T001 Create the bridge's source-tree skeleton: `src/`, `commands/`, `templates/git-hooks/`, `tests/unit/`, `tests/integration/`, `tests/fixtures/specs/` per `plan.md` §Project Structure ✓ 2026-05-28
 - [x] T002 [P] Apply markdown-lint CI fix per `validation/ci-markdownlint-diagnosis.md`: write `.markdownlint-cli2.jsonc` at repo root, edit `.github/workflows/ci.yml` to drop the broken inline `--config '{...}'` flag (so the linter discovers the config file via auto-discovery), confirm CI goes green on next push ✓ Applied by markdown-lint fix agent on 2026-05-28.
-- [ ] T003 [P] Document local dev install in `CONTRIBUTING.md` §Code style: `bash 4+` (macOS `brew install bash`), `bats-core 1.11.0`, `shellcheck`, `jq 1.6+`, `markdownlint-cli2`. Cross-link to CI workflow file
-- [ ] T004 [P] Add `tests/unit/.gitkeep`, `tests/integration/.gitkeep`, `tests/fixtures/specs/.gitkeep` so empty directories survive `git add`
+- [x] T003 [P] Document local dev install in `CONTRIBUTING.md` §Code style: `bash 4+` (macOS `brew install bash`), `bats-core 1.11.0`, `shellcheck`, `jq 1.6+`, `markdownlint-cli2`. Cross-link to CI workflow file ✓ 2026-05-28
+- [x] T004 [P] Add `tests/unit/.gitkeep`, `tests/integration/.gitkeep`, `tests/fixtures/specs/.gitkeep` so empty directories survive `git add` ✓ 2026-05-28
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: shared bash modules every user story depends on. Each module is self-contained — within this phase, all `[P]` tasks may run in parallel (separate files, no dependencies between modules).
 
-- [ ] T005 [P] Implement `src/config.sh` — loads and validates `.specify/extensions/linear/linear-config.yml` per `contracts/config-schema.json`. Exposes `config::load`, `config::get_team_id`, `config::get_project_id`, `config::get_workflow_state_uuid <lifecycle_phase>`. Validates every UUID present + well-formed; fails loud on missing fields per Principle VIII
-- [ ] T006 [P] Implement `src/graphql.sh` — curl-based Linear GraphQL client. Exposes `graphql::query <query> <vars-json>` and `graphql::mutate <mutation> <vars-json>`. Reads `LINEAR_API_KEY` from `.env`. Handles HTTP 4xx (auth, halt), 5xx (retry once with backoff), and GraphQL `errors[]` (surface and halt). Returns response JSON on stdout
-- [ ] T007 [P] Implement `src/git_helpers.sh` — `git_helpers::current_branch`, `git_helpers::list_worktrees`, `git_helpers::worktree_for_branch <branch>`, `git_helpers::is_authoritative_for_spec <NNN>` (returns 0 iff current branch matches `<NNN>-*`), `git_helpers::pr_state <branch>` (uses `gh pr view --json` when available, falls back to `git merge-base --is-ancestor origin/main <branch>` per FR-030)
-- [ ] T008 [P] Implement `src/summary.sh` — structured summary emitter per Principle VIII. `summary::start`, `summary::add <type> <message>` (where type ∈ created|updated|archived|warned|skipped|error), `summary::emit` (prints final structured block to stderr). Suppresses ANSI when stderr is not a tty
-- [ ] T009 [P] Implement `src/parser.sh` — markdown parser for spec-kit artifacts. `parser::feature_number <spec_dir>`, `parser::lifecycle_phase <spec_dir>` (infers from artifact presence per spec FR-012), `parser::task_phases <tasks_md_path>` (parses `## Phase N: <Name>` headers), `parser::tasks_in_phase <tasks_md_path> <N>` (extracts checklist items), `parser::clarify_sessions <spec_md_path>` (extracts `### Session YYYY-MM-DD` blocks)
-- [ ] T010 [P] tests/unit/config.bats — unit tests for `src/config.sh` (valid config, missing field, malformed UUID, missing file)
-- [ ] T011 [P] tests/unit/graphql.bats — unit tests for `src/graphql.sh` against a local HTTP fixture (no live Linear)
-- [ ] T012 [P] tests/unit/git_helpers.bats — unit tests for `src/git_helpers.sh` using temp git repos with multiple worktrees
-- [ ] T013 [P] tests/unit/summary.bats — unit tests for `src/summary.sh` (counts, ordering, tty detection)
-- [ ] T014 [P] tests/unit/parser.bats — unit tests for `src/parser.sh` against `tests/fixtures/specs/*`
-- [ ] T015 [P] tests/fixtures/specs/001-minimal/ — synthetic spec with `spec.md` only (Specifying phase)
-- [ ] T016 [P] tests/fixtures/specs/002-multi-phase/ — synthetic spec with `spec.md`, `plan.md`, `tasks.md` containing 3 task phases and inter-phase deps (Tasking phase)
-- [ ] T017 [P] tests/fixtures/specs/003-malformed-tasks/ — `tasks.md` with task lines outside any `## Phase` header (parser warning case)
-- [ ] T018 [P] tests/fixtures/specs/004-already-merged/ — fully-complete spec with `spec.md`, `plan.md`, `tasks.md`, `analyze*.md`, plus a fixture `gh` PR-state mock returning `merged: true` (retroactive sync target)
-- [ ] T019 [P] tests/fixtures/specs/005-clarify-sessions/ — `spec.md` with three `### Session YYYY-MM-DD` clarify blocks (comment-mirroring target)
+- [x] T005 [P] Implement `src/config.sh` — loads and validates `.specify/extensions/linear/linear-config.yml` per `contracts/config-schema.json`. Exposes `config::load`, `config::get_team_id`, `config::get_project_id`, `config::get_workflow_state_uuid <lifecycle_phase>`. Validates every UUID present + well-formed; fails loud on missing fields per Principle VIII ✓ 2026-05-28
+- [x] T006 [P] Implement `src/graphql.sh` — curl-based Linear GraphQL client. Exposes `graphql::query <query> <vars-json>` and `graphql::mutate <mutation> <vars-json>`. Reads `LINEAR_API_KEY` from `.env`. Handles HTTP 4xx (auth, halt), 5xx (retry once with backoff), and GraphQL `errors[]` (surface and halt). Returns response JSON on stdout ✓ 2026-05-28
+- [x] T007 [P] Implement `src/git_helpers.sh` — `git_helpers::current_branch`, `git_helpers::list_worktrees`, `git_helpers::worktree_for_branch <branch>`, `git_helpers::is_authoritative_for_spec <NNN>` (returns 0 iff current branch matches `<NNN>-*`), `git_helpers::pr_state <branch>` (uses `gh pr view --json` when available, falls back to `git merge-base --is-ancestor origin/main <branch>` per FR-030) ✓ 2026-05-28
+- [x] T008 [P] Implement `src/summary.sh` — structured summary emitter per Principle VIII. `summary::start`, `summary::add <type> <message>` (where type ∈ created|updated|archived|warned|skipped|error), `summary::emit` (prints final structured block to stderr). Suppresses ANSI when stderr is not a tty ✓ 2026-05-28
+- [x] T009 [P] Implement `src/parser.sh` — markdown parser for spec-kit artifacts. `parser::feature_number <spec_dir>`, `parser::lifecycle_phase <spec_dir>` (infers from artifact presence per spec FR-012), `parser::task_phases <tasks_md_path>` (parses `## Phase N: <Name>` headers), `parser::tasks_in_phase <tasks_md_path> <N>` (extracts checklist items), `parser::clarify_sessions <spec_md_path>` (extracts `### Session YYYY-MM-DD` blocks) ✓ 2026-05-28
+- [x] T010 [P] tests/unit/config.bats — unit tests for `src/config.sh` (valid config, missing field, malformed UUID, missing file) ✓ 2026-05-28
+- [x] T011 [P] tests/unit/graphql.bats — unit tests for `src/graphql.sh` against a local HTTP fixture (no live Linear) ✓ 2026-05-28
+- [x] T012 [P] tests/unit/git_helpers.bats — unit tests for `src/git_helpers.sh` using temp git repos with multiple worktrees ✓ 2026-05-28
+- [x] T013 [P] tests/unit/summary.bats — unit tests for `src/summary.sh` (counts, ordering, tty detection) ✓ 2026-05-28
+- [x] T014 [P] tests/unit/parser.bats — unit tests for `src/parser.sh` against `tests/fixtures/specs/*` ✓ 2026-05-28
+- [x] T015 [P] tests/fixtures/specs/001-minimal/ — synthetic spec with `spec.md` only (Specifying phase) ✓ 2026-05-28
+- [x] T016 [P] tests/fixtures/specs/002-multi-phase/ — synthetic spec with `spec.md`, `plan.md`, `tasks.md` containing 3 task phases and inter-phase deps (Tasking phase) ✓ 2026-05-28
+- [x] T017 [P] tests/fixtures/specs/003-malformed-tasks/ — `tasks.md` with task lines outside any `## Phase` header (parser warning case) ✓ 2026-05-28
+- [x] T018 [P] tests/fixtures/specs/004-already-merged/ — fully-complete spec with `spec.md`, `plan.md`, `tasks.md`, `analyze*.md`, plus a fixture `gh` PR-state mock returning `merged: true` (retroactive sync target) ✓ 2026-05-28
+- [x] T019 [P] tests/fixtures/specs/005-clarify-sessions/ — `spec.md` with three `### Session YYYY-MM-DD` clarify blocks (comment-mirroring target) ✓ 2026-05-28
 
 **Checkpoint**: All foundational tasks GREEN under `bats tests/unit/` + `shellcheck src/*.sh`. CI workflow passes on push. Implementation phases (US1–US5) may begin.
 

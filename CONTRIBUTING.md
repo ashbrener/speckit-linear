@@ -9,7 +9,13 @@ This project is itself a spec-kit feature: every change to the bridge flows thro
 - Skim [`BRIEF.md`](./BRIEF.md) for the original kickoff context and the decisions that were already made before spec 001 was written.
 - Install the toolchain:
   - **spec-kit** (`uv tool install specify-cli`, or per the spec-kit docs) — pinned to ≥ v0.8.13.
-  - **bash 4+**, **curl**, **jq**, **gh** (authenticated), **git** — these are the only runtimes the bridge is allowed to depend on (Principle VI / "no daemon, no DB" architectural constraint).
+  - **bash 4+** — macOS ships Bash 3.2 (Apple-licensed); install a current version with `brew install bash`. Linux distros ship Bash 4/5 by default.
+  - **curl**, **jq 1.6+**, **gh** (authenticated via `gh auth login`), **git 2.30+** — universal CLI deps.
+  - **bats-core 1.11.0** for tests: `brew install bats-core` (macOS) or `npm install -g bats` (Linux).
+  - **shellcheck** for static analysis: `brew install shellcheck` (macOS) or `apt-get install shellcheck` (Linux).
+  - **markdownlint-cli2** for prose linting (CI runs this on every PR): `npm install -g markdownlint-cli2`.
+  - These are the only runtimes the bridge is allowed to depend on (Principle VI / "no daemon, no DB" architectural constraint). Adding a runtime requires a constitution amendment.
+- The full CI pipeline ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) runs shellcheck, yamllint, markdownlint-cli2, and bats across a Bash 4.4 + Bash 5.2 matrix. Run locally before pushing.
 
 ## How to propose a change
 
