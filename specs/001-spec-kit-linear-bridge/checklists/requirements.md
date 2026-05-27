@@ -95,3 +95,11 @@
   FR-002, FR-021, FR-028 to thread the UUID-map convention through
   related contracts. Checklist remains clean (zero NEEDS
   CLARIFICATION). Spec is ready for `/speckit-plan`.
+- **Iteration 8 (2026-05-28)**: Added FR-033 (local git hooks —
+  `post-checkout`, `post-commit`, `post-merge` — auto-installed at
+  `specify extension add linear` time, invoking the same reconciler
+  as spec-kit's `after_*` hooks). Closes the "I switched worktree
+  without running a spec-kit command" gap. Crons, daemons, and
+  filesystem watchers explicitly out of scope per operator decision.
+  Q&amp;A bullet appended to the Clarifications session. Checklist
+  remains clean.

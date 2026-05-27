@@ -53,6 +53,7 @@ requirement below.
 - Q: At `specify extension add linear` time, MUST the install step verify and report on every dependency it touches (Linear MCP wiring in `.mcp.json`, OAuth ceremony status, `gh` CLI presence, bridge runtime), or is best-effort silent install acceptable? → A: Install MUST verify and report on every dependency it touches; silent failures are not acceptable. The concrete dependency list (which runtimes, which MCP entries, which OAuth scopes) is fixed by `/speckit-plan` once the bridge's implementation language is chosen; FR-018b codifies the single load-bearing rule.
 - Q: Should the extension auto-register its `after_*` hooks in the consumer repo's `.specify/extensions.yml` at install time, or ship only on-demand commands the operator triggers manually? → A: Auto-register all relevant `after_*` hooks at install time with `optional: false`, so every lifecycle command pings Linear automatically (the "memory just works" default). Ship on-demand commands (`speckit.linear.push`, `speckit.linear.pull`, `speckit.linear.status`) as escape hatches for manual control / recovery. Operators can disable any individual hook by editing the YAML.
 - Q: When the GitHub Action fires and needs to flip the spec Issue's workflow state, does it look up the state by NAME (e.g. `"Ready-to-merge"`, `"Merged"`) or by UUID? → A: UUID-based binding, mirroring the Project and Team UUID pattern. The seed step (FR-021) creates the workflow states, captures their UUIDs at creation time, and writes them to `.specify/extensions/linear/config.yml` under a `workflow_state_uuids` map (keyed by lifecycle-phase name). The Action reads UUIDs from config and queries Linear by UUID. Name changes in Linear's UI don't break the lookup; only state deletion does, which surfaces as an explicit error.
+- Q: Should the bridge also fire on local git operations (branch checkout, commit, local merge) so Linear's branch/worktree/current-task memory block stays current even when the operator hasn't run a spec-kit command? → A: Yes. The bridge auto-installs local git hooks (`post-checkout`, `post-commit`, `post-merge`) at `specify extension add linear` time per FR-033. These hooks invoke the same reconciler as spec-kit's `after_*` hooks. Crons, daemons, filesystem watchers, and other long-running or scheduled triggers remain explicitly out of scope.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -589,6 +590,24 @@ intermediate phase transitions appearing in Linear's activity log.
   Renames of the workflow states in the Linear UI MUST NOT break
   the bridge; only deletion of a referenced state MUST surface as
   an explicit error.
+
+#### Local git triggers
+
+- **FR-033**: The bridge MUST install local git hooks
+  (`post-checkout`, `post-commit`, `post-merge`) into the consumer
+  repo's `.git/hooks/` at `specify extension add linear` time.
+  These hooks MUST invoke the same reconcile operation that
+  spec-kit's `after_*` hooks invoke, so that operator actions
+  outside spec-kit commands — switching branches or worktrees,
+  committing work that ticks off a task, merging locally — also
+  keep Linear in sync without polling, daemons, or scheduled jobs.
+  Installation MUST be idempotent (re-installation does not
+  duplicate hook entries) and MUST coexist with any pre-existing
+  hooks the consumer repo already has (chain rather than overwrite,
+  or surface a clear collision report and let the operator decide).
+  Because `.git/hooks/` is not versioned, the install step is
+  per-clone and re-runs as part of the dependency-verification
+  contract in FR-018b.
 
 ### Key Entities
 
