@@ -1,0 +1,223 @@
+---
+name: speckit.linear.push
+description: Reconcile filesystem spec state into Linear (FS → Linear, idempotent)
+arguments:
+  - name: spec
+    description: feature number (e.g., 003) to sync only that spec; default behaviour is to sync all specs
+    optional: true
+  - name: dry-run
+    description: log mutations without executing them
+    optional: true
+  - name: retroactive
+    description: first-time-adoption mode (suppress non-authoritative warnings; implies --all)
+    optional: true
+---
+
+# `/speckit.linear.push`
+
+Reconcile the consumer repo's `specs/NNN-feature/` directories into
+Linear. This is the load-bearing path that mirrors filesystem state
+into Linear Issues, sub-issues, checklists, blocking relations,
+clarify-session comments, and lifecycle labels.
+
+**Direction**: one-way, filesystem → Linear (Principle I).
+**Semantics**: idempotent (Principle II — zero-churn on unchanged
+state, SC-002).
+**Authority**: only mutates Linear for specs whose feature branch is
+checked out in this worktree (Principle IV / FR-025); other specs
+enter read-only display mode (FR-026).
+**Layer**: this command implements Layer D. The GitHub Action template
+that ships with `/speckit-linear-install` implements Layer E and is
+out of scope here.
+
+The deterministic work happens in `src/reconcile.sh`; this command is
+the AI-agent entry point that runs the shell and surfaces its output.
+The formal API contract is `contracts/command-shapes.md` §1
+(`speckit.linear.push`); the mutations issued are enumerated in
+`contracts/linear-graphql-mutations.md` §4. Operators reading this
+file are looking at the markdown the AI agent reads — the same
+operations are available via `bash src/reconcile.sh` directly.
+
+## Arguments
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Sync only this spec. |
+| `dry-run` | false | Log every mutation that WOULD fire; issue none. Safe inspection mode. |
+| `retroactive` | false | First-time-adoption mode (FR-014 / User Story 5). Implies `--all`; suppresses "skipped because non-authoritative" warnings. |
+
+Exactly one of `spec` or "all specs" is in effect — if `spec` is not
+passed, the reconciler walks every `specs/NNN-*/` directory in the
+consumer repo. If `retroactive` is set and `spec` is not, `--all` is
+implied. `dry-run` is orthogonal to `retroactive` and `spec`.
+
+## Algorithm (what the AI agent executes)
+
+1. **Verify prerequisites.** Refuse to proceed if any of these fail.
+   - Bash 4 or newer is on `PATH`. Run `bash --version` and confirm
+     the major version number is `≥ 4`. macOS ships bash 3.2 by
+     default; the operator must `brew install bash` and ensure
+     `/opt/homebrew/bin/bash` (Apple Silicon) or `/usr/local/bin/bash`
+     (Intel) is earlier on `PATH` than `/bin/bash`.
+   - The consumer repo's config is present at
+     `.specify/extensions/linear/linear-config.yml`. If absent,
+     surface "run `/speckit-linear-install` first" and exit; do NOT
+     attempt to run the reconciler.
+   - `jq` is installed (`command -v jq`). `curl` is installed
+     (`command -v curl`). `git` is installed and the working directory
+     is inside a git working tree.
+
+2. **Compose the invocation.** Translate the user-facing arguments
+   into `src/reconcile.sh` flags:
+   - `spec=NNN` → `--spec NNN`
+   - no `spec` and no `retroactive` → `--all`
+   - `dry-run=true` → `--dry-run`
+   - `retroactive=true` → `--retroactive`
+   - Always pass `--quiet` UNLESS the user has explicitly asked for
+     verbose output, since the structured summary is the
+     operator-visible contract per FR-023.
+
+3. **Execute the reconciler.** Shell out:
+
+   ```bash
+   bash src/reconcile.sh <flags>
+   ```
+
+   The script:
+   - Loads + validates `linear-config.yml` (`src/config.sh`). On
+     missing/malformed UUIDs it halts with exit 2 and an
+     operator-actionable diagnostic (Principle VIII).
+   - Enumerates the requested specs and processes each:
+     - Gates writes on the worktree's branch matching `<NNN>-…`
+       (Principle IV / FR-025). Non-authoritative invocations enter
+       a read-only display path and surface the spec's current
+       Linear state without mutation.
+     - Infers the lifecycle phase from artifacts on disk
+       (`spec.md` → `clarifying` → `planning` → `tasking` →
+       `red_team` → `implementing` → `analyzing` → `ready_to_merge` →
+       `merged`) per FR-012, with PR-state hints from
+       `git_helpers::pr_state` (gh CLI → git-only branch-reachability
+       fallback per FR-030) for the terminal `ready_to_merge` and
+       `merged` states.
+     - Find-or-creates the spec Issue by `speckit-spec:NNN` label
+       scoped to the configured Project (FR-004b). On race
+       (>1 match) keeps the most-recently-updated and surfaces the
+       others as warnings. On retroactive sync sets `stateId`
+       directly to the inferred end-state (FR-014).
+     - Renders the structured "memory" block (FR-004) and splices
+       it into the spec Issue's description between the
+       `<!-- speckit-linear:memory:begin -->` /
+       `<!-- speckit-linear:memory:end -->` fences. Operator-added
+       prose around the fences is preserved.
+     - Reconciles task-phase sub-issues per `## Phase N: <Name>`
+       header in `tasks.md` (FR-005). Each sub-issue carries a
+       checklist mirror with a read-only header (FR-006). Workflow
+       state is Todo / In Progress / Done based on checklist
+       completion ratio.
+     - Wires inter-phase blocking relations (FR-007) by reading
+       "Phase N depends on Phase M" hints from `plan.md` /
+       `tasks.md`. Native `save_issue.blocks` per the MCP runtime
+       probe; pre-queries existing relations to avoid duplicate-add.
+     - Mirrors each `### Session YYYY-MM-DD` clarify block under
+       `## Clarifications` to a Linear Issue comment, idempotent via
+       a deterministic HTML marker (FR-008 + FR-015).
+     - Ensures the spec Issue carries `phase:<current>` and
+       `speckit-spec:NNN` labels; strips stale `phase:*` labels.
+       When phase is `merged`, no `phase:*` label is set (FR-013).
+
+4. **Render the structured summary.** The script emits a block to
+   stderr at the end of every invocation (FR-023). The block looks
+   like:
+
+   ```text
+   ===== speckit.linear summary =====
+   speckit.linear reconcile — spec 003
+   Created: 1   Updated: 4   Archived: 0
+   Skipped: 0   Warned: 1     Errors: 0
+   ----- warnings -----
+   - spec 003: 2 task line(s) outside any ## Phase header
+   ==================================
+   ```
+
+   Surface this verbatim to the operator. The block IS the
+   operator-visible result of the command per Principle VIII Rule 1.
+
+5. **Handle the exit code.** Per `contracts/command-shapes.md` §1.6:
+   - `0` — success (possibly with warnings). Report success; include
+     the summary block verbatim.
+   - `1` — partial failure. Some specs failed; others succeeded.
+     Surface the warnings from the summary and recommend re-running
+     `/speckit.linear.push spec=<NNN>` for any spec named in the
+     warnings list.
+   - `2` — workspace config error (per FR-022). The script halted
+     before any mutation. Surface the exact remediation the script
+     printed (typically: run `/speckit-linear-install` or
+     `/speckit-linear-seed`). Do NOT retry automatically.
+   - `3` — transport failure. Linear was unreachable; nothing was
+     written. Recommend re-running once network connectivity is
+     restored.
+
+## When this command fires
+
+- **Operator-driven.** `/speckit.linear.push` from the AI agent
+  chat — the primary on-demand path for recovery from missed hooks
+  and ad-hoc reconcile.
+- **Auto-fired hooks** (post-install via `/speckit-linear-install`).
+  Every `/speckit-*` lifecycle command in `.specify/extensions.yml`
+  is wired to invoke this command per FR-031.
+- **Local git hooks** (`post-checkout`, `post-commit`, `post-merge`)
+  invoke `src/reconcile.sh` directly per FR-033, bypassing this
+  markdown and skipping the prerequisite re-verification.
+
+All three paths converge on `src/reconcile.sh` (FR-011 — same
+outcome regardless of trigger).
+
+## Output channel discipline
+
+- `stdout` of `src/reconcile.sh` is reserved for future
+  structured-output modes (none in v1) — it stays empty during a
+  normal reconcile.
+- `stderr` carries:
+  - per-mutation log lines (suppressed by `--quiet`)
+  - the final structured summary block (always, unless
+    `sync.emit_summary: false` is set in `linear-config.yml`)
+- No filesystem writes (Principle I + FR-016). The reconciler reads
+  the spec directories, the config, and the git state; everything
+  else flows out over the Linear API.
+
+## Failure surface
+
+Each failure mode is surfaced as a named warning in the summary
+(Principle VIII) so the operator can act on it without trawling
+logs:
+
+- `spec NNN: spec.md missing or empty; skipping` — edge case from
+  spec § 1. Reconcile continues with the next spec.
+- `spec NNN: N task line(s) outside any ## Phase header` — FR-024.
+  Tasks lacking a phase grouping are still flagged and the rest of
+  the spec syncs.
+- `duplicate spec Issues with label speckit-spec:NNN: kept <id>,
+  archiving N loser(s)` — FR-004b race resolution. The most-recently
+  -updated wins; losers are flagged for archival.
+- `clarify-session DATE: existing comment body diverges from
+  spec.md; not overwriting` — FR-015 + contracts §9. Hand-edits to
+  comments are preserved; the reconciler does not silently overwrite.
+- `non-authoritative worktree (current branch '<branch>'); read-only
+  mode` — Principle IV / FR-025. This is the expected behaviour from
+  `main` or an unrelated branch; the operator switches worktrees to
+  re-enable write authority. Suppressed by `retroactive=true`.
+- `linear-config.yml not found at <path>; run
+  /speckit-linear-install` — FR-022 halt. Exit code 2.
+
+## Related commands
+
+- `/speckit.linear.pull` — read-only inspect Linear's current view
+  (works from any worktree, never mutates).
+- `/speckit.linear.status` — drift report (filesystem vs Linear)
+  without actually issuing mutations.
+- `/speckit.linear.seed` — one-shot workspace setup. Run once per
+  Linear workspace before the first push.
+- `/speckit.linear.install` — per-repo install ceremony. Run once
+  per consumer repo before the first push.
+
+See `contracts/command-shapes.md` for the formal contract on each.

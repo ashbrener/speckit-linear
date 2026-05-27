@@ -32,7 +32,8 @@
         "workspace",
         "team",
         "project",
-        "workflow_state_uuids"
+        "workflow_state_uuids",
+        "default_state_uuids"
       ],
       "properties": {
         "workspace": {
@@ -154,6 +155,33 @@
             "merged": {
               "type": "string",
               "description": "Workflow-state UUID for the 'Merged' phase (state-type: completed). Flipped by Layer E on PR closed with merged=true per FR-028.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        },
+        "default_state_uuids": {
+          "type": "object",
+          "description": "Map of task-phase sub-issue state key to Linear workflow-state UUID, captured by speckit.linear.seed at workspace-seed time (FR-021, FR-032). Distinct from workflow_state_uuids: those drive the parent spec Issue's lifecycle progression (specifying → … → merged), while these drive the simpler todo/in_progress/done tri-state on each task-row sub-issue created by /speckit-implement. All three keys MUST be present and well-formed UUIDs. Lookup is by UUID, never by name — Linear UI renames are safe; deletion of a referenced state surfaces as an explicit error at reconcile time.",
+          "additionalProperties": false,
+          "required": [
+            "todo",
+            "in_progress",
+            "done"
+          ],
+          "properties": {
+            "todo": {
+              "type": "string",
+              "description": "Workflow-state UUID for a newly-created task sub-issue that has not yet started (state-type: unstarted).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "in_progress": {
+              "type": "string",
+              "description": "Workflow-state UUID for a task sub-issue currently in flight (state-type: started).",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "done": {
+              "type": "string",
+              "description": "Workflow-state UUID for a task sub-issue whose tasks.md row has been ticked complete (state-type: completed).",
               "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
             }
           }

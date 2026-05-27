@@ -50,6 +50,21 @@ linear:
     analyzing:      "00000000-0000-0000-0000-000000000000"   # Required (FR-032)
     ready_to_merge: "00000000-0000-0000-0000-000000000000"   # Required (FR-032)
     merged:         "00000000-0000-0000-0000-000000000000"   # Required (FR-032)
+  # Default workflow-state UUIDs for task-phase SUB-ISSUES (one sub-issue
+  # per row in tasks.md). These are NOT the lifecycle phases above — the
+  # lifecycle states drive the parent spec Issue's progression through the
+  # /speckit-* commands (specifying → clarifying → … → merged), while
+  # `default_state_uuids` drives the much simpler todo/in_progress/done
+  # tri-state that each individual task sub-issue moves through as
+  # `/speckit-implement` ticks rows off in tasks.md.
+  #
+  # Captured by the seed step alongside `workflow_state_uuids` (FR-021 +
+  # FR-032). Lookup is by UUID, never by name — Linear UI renames are safe;
+  # deletion of a referenced state surfaces as an explicit error.
+  default_state_uuids:
+    todo:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — sub-issue created, not yet started
+    in_progress:    "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row in-flight
+    done:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row ticked complete
 
 # Behavior toggles — operator-tweakable.
 sync:
