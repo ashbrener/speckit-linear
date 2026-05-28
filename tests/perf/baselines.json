@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "harness": "tests/perf/run.sh",
+  "reconcile_invocation": "bash src/reconcile.sh --all --dry-run --quiet",
+  "fixture_shape": {
+    "phases_per_spec": 4,
+    "tasks_per_spec": 30,
+    "template": "tests/perf/fixtures/spec-template/"
+  },
+  "thresholds_seconds": {
+    "cold": 30,
+    "hot": 5,
+    "source": "specs/001-spec-kit-linear-bridge/tasks.md T076 + plan.md Performance Goals (line 116-118)"
+  },
+  "measured_at": "2026-05-28",
+  "measured_on": "darwin-arm64, bash 5.3.9, single-run cold/hot per N",
+  "skipped_n": [25, 50],
+  "skipped_reason": "Default matrix is 1,5,10,25,50. Operator measured 1,5,10 only because N=10 already finishes in <1s; 25 and 50 are expected to scale roughly linearly (run with `--n 25,50` to confirm).",
+  "rows": [
+    {
+      "N": 1,
+      "cold_seconds": 0.268,
+      "hot_seconds": 0.138,
+      "threshold_kind": "informational",
+      "threshold_met": true,
+      "note": "Single-spec baseline; not threshold-gated."
+    },
+    {
+      "N": 5,
+      "cold_seconds": 0.599,
+      "hot_seconds": 0.469,
+      "threshold_kind": "informational",
+      "threshold_met": true,
+      "note": "Mid-scale baseline; not threshold-gated."
+    },
+    {
+      "N": 10,
+      "cold_seconds": 0.992,
+      "hot_seconds": 0.840,
+      "threshold_kind": "binding",
+      "threshold_met": true,
+      "note": "SC-binding N. Cold 0.992s vs 30s target (~30x headroom). Hot 0.840s vs 5s target (~6x headroom)."
+    }
+  ]
+}
