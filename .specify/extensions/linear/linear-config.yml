@@ -61,15 +61,14 @@ linear:
     ready_to_merge: "1e1de68f-084b-41e4-a7f6-e2bf44aba0f3"
     merged: "1af17d82-7b5c-4331-a90e-48c87293184d"
   default_state_uuids:
-    todo:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — sub-issue created, not yet started
-    in_progress:    "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row in-flight
-    done:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row ticked complete
-
-# Behavior toggles — operator-tweakable.
-  default_state_uuids:
     todo: "86fb7cc1-d122-456a-aa58-afb24ce1d5a0"
     in_progress: "3fcfc383-2316-402b-bc66-a2502cffe875"
     done: "0cb3a3b4-0a07-437c-9a36-467cf876a4d6"
+  agent_label_uuids:
+    claude: "a0010eb3-4fa4-4705-b22a-ec17921d9d58"
+    codex: "6d2977e3-f445-4076-9241-98890c6cdd60"
+
+# Behavior toggles — operator-tweakable.
 sync:
   enabled: true              # If false, /speckit-* hooks skip Linear writes;
                              # `speckit.linear.push` still works manually. (FR-031)

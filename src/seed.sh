@@ -952,29 +952,38 @@ seed::write_config_uuids() {
             continue
         fi
 
-        # workflow_state_uuids opener — emit replacement, skip its children.
+        # workflow_state_uuids opener — emit replacement on first encounter,
+        # drop silently on any subsequent encounter (legacy configs may have
+        # duplicate openers from earlier splicer-bug runs; treat them as
+        # stale and merge into the single canonical block we already emitted).
         if [[ "$state" == "normal" ]] \
             && [[ "$line" =~ ^[[:space:]]+workflow_state_uuids:[[:space:]]*$ ]]; then
-            printf '%s\n' "$wf_block" >>"$tmp_out"
-            wf_seen=1
+            if (( wf_seen == 0 )); then
+                printf '%s\n' "$wf_block" >>"$tmp_out"
+                wf_seen=1
+            fi
             state="skip_wf"
             continue
         fi
 
-        # default_state_uuids opener — same.
+        # default_state_uuids opener — same once-only emission semantics.
         if [[ "$state" == "normal" ]] \
             && [[ "$line" =~ ^[[:space:]]+default_state_uuids:[[:space:]]*$ ]]; then
-            printf '%s\n' "$default_block" >>"$tmp_out"
-            default_seen=1
+            if (( default_seen == 0 )); then
+                printf '%s\n' "$default_block" >>"$tmp_out"
+                default_seen=1
+            fi
             state="skip_default"
             continue
         fi
 
-        # agent_label_uuids opener (FR-036) — same.
+        # agent_label_uuids opener (FR-036) — same once-only emission semantics.
         if [[ "$state" == "normal" ]] \
             && [[ "$line" =~ ^[[:space:]]+agent_label_uuids:[[:space:]]*$ ]]; then
-            printf '%s\n' "$agent_block" >>"$tmp_out"
-            agent_seen=1
+            if (( agent_seen == 0 )); then
+                printf '%s\n' "$agent_block" >>"$tmp_out"
+                agent_seen=1
+            fi
             state="skip_agent"
             continue
         fi
