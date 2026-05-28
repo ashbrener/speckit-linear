@@ -224,9 +224,31 @@ git_helpers::feature_number_for_branch() {
 # Implements FR-030's two-tier PR detection contract:
 #
 #   1. If `gh` is in PATH AND the operator is authenticated to GitHub via
-#      `gh`, return the rich JSON object `gh pr view` emits, exactly as
-#      received (fields: state, isDraft, merged, mergedAt, url). The
-#      reconciler decodes whichever fields it needs.
+#      `gh`, return a rich JSON object describing the PR whose HEAD is
+#      <branch> (fields: state, isDraft, mergedAt, url). The reconciler
+#      decodes whichever fields it needs; "merged" is derived from
+#      `state == "MERGED"` (a non-null `mergedAt` corroborates it).
+#
+#      We query via `gh pr list --head <branch> --state all` rather than
+#      `gh pr view <branch>` for two reasons:
+#        (a) `gh pr view` requires <branch> to be the *current* branch or
+#            otherwise resolvable from local checkout/upstream context;
+#            `gh pr list --head` queries the GitHub API directly for ANY
+#            branch name, so detection works when reconciling a spec's
+#            feature branch (`NNN-...`) from `main` or any other worktree
+#            (FR-013 / FR-030 merge detection from any branch).
+#        (b) `gh pr list` returns an empty array (exit 0) when no PR
+#            exists, vs `gh pr view` which exits non-zero — cleaner to
+#            branch on. We take the first (most-recent) matching PR.
+#
+#      NOTE: there is intentionally NO `merged` field in the --json set —
+#      `merged` is not a valid `gh pr {view,list}` JSON field (it errors
+#      `Unknown JSON field: "merged"` and aborts the whole query). The
+#      original code requested it, so the gh path ALWAYS failed and fell
+#      through to the git fallback below; from `main` (where the feature
+#      branch has no local ref) that fallback returns indeterminate, so a
+#      merged spec was mis-detected as still implementing. Merge state is
+#      now read from `state`/`mergedAt`, the real fields.
 #
 #   2. Otherwise (no `gh` binary, or `gh auth status` failing) fall back to
 #      a git-only branch-reachability probe:
@@ -255,14 +277,27 @@ git_helpers::pr_state() {
   # is the canonical "are we logged in" check; we redirect its noisy
   # output to /dev/null and rely solely on its exit code.
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    local rich
-    if rich=$(gh pr view "$branch" --json state,isDraft,merged,mergedAt,url 2>/dev/null); then
+    local rich first
+    # `gh pr list --head <branch> --state all` queries the GitHub API for
+    # the PR(s) whose head ref is <branch>, independent of which branch is
+    # checked out locally — this is what makes merge detection work when
+    # reconciling spec NNN from `main`. Returns a JSON array (possibly
+    # empty). We extract the first element (most-recent PR) as the rich
+    # object the reconciler expects. Only the valid fields are requested
+    # (no `merged` — that field does not exist and would abort the query).
+    if rich=$(gh pr list --head "$branch" --state all \
+        --json state,isDraft,mergedAt,url 2>/dev/null); then
       if [[ -n "$rich" ]]; then
-        printf '%s\n' "$rich"
-        return 0
+        # `jq -e .[0]` exits non-zero (and prints nothing usable) when the
+        # array is empty, so a no-PR branch falls through to the git probe.
+        if first=$(printf '%s' "$rich" | jq -ce '.[0]' 2>/dev/null) \
+            && [[ -n "$first" && "$first" != "null" ]]; then
+          printf '%s\n' "$first"
+          return 0
+        fi
       fi
     fi
-    # `gh pr view` exits non-zero when no PR exists for the branch. Fall
+    # No PR found for this branch (empty array or query failed). Fall
     # through to the git-only probe so we still answer the merged-or-not
     # question that callers actually care about.
   fi

@@ -2451,6 +2451,52 @@ reconcile::sync_clarify_comments() {
     done < <(parser::clarify_sessions "$spec_md")
 }
 
+# reconcile::pr_state_hint <pr_state_raw>
+#   Normalise the raw output of git_helpers::pr_state into the lifecycle
+#   hint token parser::lifecycle_phase expects: `merged`, `ready`, or the
+#   empty string ("no signal — fall back to the artifact ladder").
+#
+#   git_helpers::pr_state emits one of two shapes:
+#     * a rich JSON object (gh path) with the REAL gh fields
+#       `state` (OPEN|CLOSED|MERGED), `isDraft`, `mergedAt`, `url`; OR
+#     * the bare word `merged` / `open` (git-only reachability fallback).
+#
+#   Merge is derived from `state == "MERGED"` (a non-null `mergedAt`
+#   corroborates) — NOT from a `merged` boolean. `merged` is not a valid
+#   `gh pr {view,list} --json` field; requesting it aborts the whole gh
+#   query. The original code both requested that field AND read `.merged`
+#   from the response, so the gh path always failed → merged specs (e.g.
+#   spec 001 reconciled from `main`) were mis-detected as still
+#   `implementing` (the OSH-5 dogfood bug). Reading the real fields fixes
+#   detection from ANY branch.
+#
+#   An OPEN, non-draft PR maps to `ready` (→ ready_to_merge per FR-028),
+#   never `merged`.
+reconcile::pr_state_hint() {
+    local pr_state_raw="${1:-}"
+    [[ -n "$pr_state_raw" ]] || return 0
+
+    if printf '%s' "$pr_state_raw" | jq -e . >/dev/null 2>&1; then
+        local pr_state pr_merged_at pr_draft
+        pr_state="$(printf '%s' "$pr_state_raw" | jq -r '.state // "" | ascii_upcase')"
+        pr_merged_at="$(printf '%s' "$pr_state_raw" | jq -r '.mergedAt // ""')"
+        pr_draft="$(printf '%s' "$pr_state_raw" | jq -r '.isDraft // false')"
+        if [[ "$pr_state" == "MERGED" || ( -n "$pr_merged_at" && "$pr_merged_at" != "null" ) ]]; then
+            printf 'merged\n'
+        elif [[ "$pr_draft" == "false" ]]; then
+            printf 'ready\n'
+        fi
+        return 0
+    fi
+
+    # git-only fallback path: the bare word `merged` is the only positive
+    # signal; `open` (or anything else) leaves the hint empty so the
+    # artifact ladder decides.
+    if [[ "$pr_state_raw" == "merged" ]]; then
+        printf 'merged\n'
+    fi
+}
+
 # reconcile::process_spec <spec_dir>
 #   Top-level per-spec orchestration. Returns 0 always — failures are
 #   recorded via summary::add and promote RECONCILE_EXIT_CODE; we never
@@ -2511,23 +2557,8 @@ reconcile::process_spec() {
     local pr_state_raw lifecycle_phase
     pr_state_raw="$(git_helpers::pr_state "$feature_branch" 2>/dev/null || true)"
 
-    local pr_state_hint=""
-    if [[ -n "$pr_state_raw" ]]; then
-        # gh path returns JSON; git fallback returns the literal word
-        # `merged` or `open`. Detect which and normalise to a token.
-        if printf '%s' "$pr_state_raw" | jq -e . >/dev/null 2>&1; then
-            local pr_merged pr_draft
-            pr_merged="$(printf '%s' "$pr_state_raw" | jq -r '.merged // false')"
-            pr_draft="$(printf '%s' "$pr_state_raw" | jq -r '.isDraft // false')"
-            if [[ "$pr_merged" == "true" ]]; then
-                pr_state_hint="merged"
-            elif [[ "$pr_draft" == "false" ]]; then
-                pr_state_hint="ready"
-            fi
-        elif [[ "$pr_state_raw" == "merged" ]]; then
-            pr_state_hint="merged"
-        fi
-    fi
+    local pr_state_hint
+    pr_state_hint="$(reconcile::pr_state_hint "$pr_state_raw")"
 
     if ! lifecycle_phase="$(parser::lifecycle_phase "$spec_dir" "$pr_state_hint")"; then
         summary::add warned "spec ${feature_number}: cannot infer lifecycle phase; skipping"

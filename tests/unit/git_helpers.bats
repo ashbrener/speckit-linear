@@ -93,19 +93,26 @@ _make_feature_branch() {
 # always claims authenticated. Prepends $SHIMS to PATH for the current test.
 # -----------------------------------------------------------------------------
 _install_gh_shim() {
+  # $1 is the JSON ARRAY git_helpers::pr_state expects back from
+  # `gh pr list --head <branch> --state all --json ...`. The implementation
+  # extracts `.[0]` from this array, so callers pass an array literal (e.g.
+  # '[{"state":"MERGED",...}]') — or '[]' to simulate "no PR for this
+  # branch", which forces the git-only fallback.
   local json="$1"
   cat > "$SHIMS/gh" <<EOF
 #!/usr/bin/env bash
 # Minimal gh shim used by git_helpers.bats. Recognises only the two
 # subcommands git_helpers::pr_state calls: \`auth status\` (must succeed)
-# and \`pr view ... --json ...\` (must echo a JSON blob).
+# and \`pr list --head <branch> --state all --json ...\` (echo a JSON array).
 case "\$1" in
   auth)
     # \`gh auth status\` — always healthy in this shim.
     exit 0
     ;;
   pr)
-    # \`gh pr view <branch> --json ...\` — echo the canned JSON.
+    # \`gh pr list --head <branch> --json ...\` — echo the canned JSON
+    # array. This is queried by HEAD ref, so it resolves regardless of
+    # which branch is currently checked out (the from-main case).
     cat <<'JSON'
 $json
 JSON
@@ -344,19 +351,76 @@ EOF
 # git_helpers::pr_state — gh present (mocked)
 # =============================================================================
 
-@test "pr_state returns the rich JSON when gh is mocked to report merged" {
+@test "pr_state returns the first PR's rich JSON when gh reports a merged PR" {
   cd "$REPO"
   _make_feature_branch '001-feature'
 
-  _install_gh_shim '{"state":"MERGED","isDraft":false,"merged":true,"mergedAt":"2026-05-27T10:00:00Z","url":"https://github.com/example/repo/pull/1"}'
+  # gh pr list --head returns a JSON ARRAY; the canned blob uses the REAL
+  # gh JSON fields (state/mergedAt) — there is no `merged` field (the bug:
+  # requesting it aborted the gh query and lost merge detection entirely).
+  _install_gh_shim '[{"state":"MERGED","isDraft":false,"mergedAt":"2026-05-27T10:00:00Z","url":"https://github.com/example/repo/pull/1"}]'
 
   run git_helpers::pr_state '001-feature'
   [ "$status" -eq 0 ]
-  # The function passes the gh output through verbatim. Assert on the
-  # most distinctive field rather than the whole string so whitespace
-  # quirks in the shim don't trip the test.
-  [[ "$output" == *'"merged":true'* ]]
+  # The function unwraps the array's first element and passes it through.
+  # Assert on the distinctive fields rather than the whole string so
+  # whitespace quirks in the shim don't trip the test.
   [[ "$output" == *'"state":"MERGED"'* ]]
+  [[ "$output" == *'"mergedAt":"2026-05-27T10:00:00Z"'* ]]
+  # Regression guard: the unwrapped value is a JSON OBJECT, not the array.
+  [[ "$output" != \[* ]]
+}
+
+# Regression test for the v0.1.1 dogfood bug (OSH-5 stuck "Implementing"
+# despite PR #1 merged): reconciling a spec's feature branch from `main`
+# — where the feature branch has NO local ref — must still detect MERGED
+# via `gh pr list --head`. Previously the gh query requested an invalid
+# `merged` field, always failed, and fell through to the git probe, which
+# returned indeterminate from main (no local feature ref) → mis-detected
+# as not-merged. Here we stay on `main` and never create a local
+# `001-from-main` branch; the gh shim answers by HEAD ref regardless.
+@test "pr_state detects a merged PR from main when the feature branch has no local ref" {
+  cd "$REPO"
+  # Stay on main — do NOT create a local 001-from-main branch.
+  [ "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)" = "main" ]
+
+  _install_gh_shim '[{"state":"MERGED","isDraft":false,"mergedAt":"2026-05-28T12:49:57Z","url":"https://github.com/example/repo/pull/1"}]'
+
+  run git_helpers::pr_state '001-from-main'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"state":"MERGED"'* ]]
+}
+
+# Negative pin: an OPEN, non-draft PR must NOT report as merged. The
+# reconciler maps this to ready_to_merge (FR-028), never merged.
+@test "pr_state returns an open non-draft PR's JSON (not merged) for the from-main case" {
+  cd "$REPO"
+  [ "$(git -C "$REPO" rev-parse --abbrev-ref HEAD)" = "main" ]
+
+  _install_gh_shim '[{"state":"OPEN","isDraft":false,"mergedAt":null,"url":"https://github.com/example/repo/pull/2"}]'
+
+  run git_helpers::pr_state '002-open-pr'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"state":"OPEN"'* ]]
+  [[ "$output" != *'"state":"MERGED"'* ]]
+}
+
+# When gh reports NO PR for the branch (empty array), pr_state must fall
+# through to the git-only reachability probe rather than treating the
+# empty array as a merged/open signal.
+@test "pr_state falls through to the git probe when gh returns an empty array" {
+  cd "$REPO"
+  git -C "$REPO" init --bare --quiet "$ORIGIN"
+  git -C "$REPO" remote add origin "$ORIGIN"
+  git -C "$REPO" push --quiet origin main
+  # Feature branch ahead of origin/main → git probe says "open".
+  _make_feature_branch '001-no-pr'
+
+  _install_gh_shim '[]'
+
+  run git_helpers::pr_state '001-no-pr'
+  [ "$status" -eq 0 ]
+  [ "$output" = "open" ]
 }
 
 # =============================================================================

@@ -135,3 +135,82 @@ resolve_with_env() {
     # uniformly skips the agent-label stamp AND the memory-block row.
     [[ "${output}" == *"family= model="* ]]
 }
+
+# ---------------------------------------------------------------------------
+# FR-013 / FR-030 — PR-state → lifecycle hint derivation.
+#
+# Regression coverage for the v0.1.1 dogfood bug (OSH-5: spec 001 stuck on
+# "Implementing" despite PR #1 merged). git_helpers::pr_state hands the
+# reconciler the REAL gh JSON fields (state/mergedAt) — there is no
+# `merged` boolean — and reconcile::pr_state_hint must derive `merged`
+# from `state == "MERGED"`. The original code requested + read a `merged`
+# field that doesn't exist, so merge detection silently never fired.
+#
+# Helper: source reconcile.sh in an isolated shell (stubbing the log) and
+# run reconcile::pr_state_hint against the given raw pr_state value.
+# ---------------------------------------------------------------------------
+hint_for() {
+    local raw="$1" q
+    printf -v q '%q' "$raw"
+    bash -c "
+        source '${RECONCILE_SH}' 2>/dev/null
+        reconcile::log() { :; }
+        reconcile::pr_state_hint ${q}
+    "
+}
+
+@test "FR-013: gh JSON with state=MERGED derives the 'merged' hint" {
+    run hint_for '{"state":"MERGED","isDraft":false,"mergedAt":"2026-05-28T12:49:57Z","url":"https://github.com/x/y/pull/1"}'
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "merged" ]
+}
+
+@test "FR-013: gh JSON with a non-null mergedAt derives 'merged' even if state is lowercased" {
+    run hint_for '{"state":"merged","isDraft":false,"mergedAt":"2026-05-28T12:49:57Z"}'
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "merged" ]
+}
+
+@test "FR-028 negative pin: an OPEN non-draft PR derives 'ready', not 'merged'" {
+    run hint_for '{"state":"OPEN","isDraft":false,"mergedAt":null,"url":"https://github.com/x/y/pull/2"}'
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "ready" ]
+}
+
+@test "a draft (open) PR derives no hint (empty) so the artifact ladder decides" {
+    run hint_for '{"state":"OPEN","isDraft":true,"mergedAt":null}'
+    [ "${status}" -eq 0 ]
+    [ -z "${output}" ]
+}
+
+@test "git-only fallback word 'merged' derives the 'merged' hint" {
+    run hint_for 'merged'
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "merged" ]
+}
+
+@test "git-only fallback word 'open' derives no hint (empty)" {
+    run hint_for 'open'
+    [ "${status}" -eq 0 ]
+    [ -z "${output}" ]
+}
+
+@test "empty pr_state input derives no hint (empty)" {
+    run hint_for ''
+    [ "${status}" -eq 0 ]
+    [ -z "${output}" ]
+}
+
+# Direct regression guard: a JSON object that ONLY has the (invalid)
+# `merged` boolean — the shape the old code expected — must NOT be the
+# basis of detection. With the real fields absent, no merged signal is
+# present, so the hint is empty. This pins that we read state/mergedAt,
+# not a `merged` boolean that gh never emits.
+@test "regression: a bogus {merged:true}-only object yields no 'merged' hint (no real fields)" {
+    run hint_for '{"merged":true}'
+    [ "${status}" -eq 0 ]
+    # state absent → not MERGED; mergedAt absent → no corroboration;
+    # isDraft absent → defaults to false → derives 'ready' (a PR exists),
+    # but crucially NOT 'merged'.
+    [ "${output}" != "merged" ]
+}
