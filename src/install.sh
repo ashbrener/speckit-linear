@@ -388,17 +388,31 @@ install::parse_args() {
         exit 2
     fi
 
-    # Non-interactive mode requires either --project or --auto-create AND --team.
+    # FR-045 strict rule (T249) — `--non-interactive` MUST have both
+    # `--team <UUID>` and `--project <UUID>` (or `--team <UUID>` +
+    # `--auto-create` as the v0.1.0-compat combination). The v0.1.1
+    # ergonomics path (interactive viewer-driven discovery) is
+    # explicitly unavailable under `--non-interactive` so CI scripts
+    # never fall through to a prompt that has no terminal to read from.
+    #
+    # The verbatim error message below is locked by install-flags.md
+    # §3.3 and gated by the SC-011 integration test T244.
     if (( INSTALL_FLAG_NON_INTERACTIVE == 1 )); then
-        if [[ -z "$INSTALL_FLAG_PROJECT" ]] && (( INSTALL_FLAG_AUTO_CREATE == 0 )); then
-            install::_log_error \
-                "--non-interactive requires either --project <UUID> or --auto-create"
-            install::usage >&2
-            exit 2
-        fi
+        local _missing=0
         if [[ -z "$INSTALL_FLAG_TEAM" ]]; then
+            _missing=1
+        elif [[ -z "$INSTALL_FLAG_PROJECT" ]] && (( INSTALL_FLAG_AUTO_CREATE == 0 )); then
+            _missing=1
+        fi
+        if (( _missing == 1 )); then
             install::_log_error \
-                "--non-interactive requires --team <UUID> (auto-detect is disabled)"
+                "--non-interactive requires both --team <UUID>"
+            {
+                printf '                 and --project <UUID> (or --team <UUID> --auto-create).\n'
+                printf '                 The v0.1.1 ergonomics path (interactive team + project\n'
+                printf '                 picker) is unavailable under --non-interactive.\n'
+                printf '                 Resolve UUIDs out-of-band or run interactively.\n'
+            } >&2
             install::usage >&2
             exit 2
         fi
@@ -3018,65 +3032,158 @@ install::run_create_project_branch() {
 }
 
 # -----------------------------------------------------------------------------
-# install::quick_validate_binding <team_uuid> <project_uuid>  (T209, FR-044)
+# install::quick_validate_binding <team_uuid> <project_uuid>
+#   (T209 + T248 + T251, FR-044)
 #
-# When both `--team` and `--project` are passed, issue a single
-# combined `team(id){...} project(id){... teams{nodes{id}}}` query per
-# install-discovery-graphql.md §5.5 and validate:
+# Issue a single combined `team(id){...} project(id){... teams{nodes{id}}}`
+# query per install-discovery-graphql.md §5.5. Used in two FR-044 fast
+# paths:
 #
-#   * `data.team == null`        → halt exit 2 (team unreachable).
-#   * `data.project == null`     → halt exit 2 (project unreachable).
-#   * `project.teams.nodes[].id` does NOT contain `team.id` →
-#     halt exit 2 (project does not belong to team).
+#   (a) `--team <UUID> --project <UUID>` (canonical CI path, T248) —
+#       validates both UUIDs and the project-team membership in one
+#       round trip. Failure modes:
+#         * `data.team == null`        → halt exit 2 (team unreachable).
+#         * `data.project == null`     → halt exit 2 (project
+#                                         unreachable).
+#         * `project.teams.nodes[].id` does NOT contain `team.id` →
+#                                         halt exit 2 (mismatch).
+#
+#   (b) `--project <UUID>` alone (T251 / install-flags.md §5 row 6) —
+#       caller passes `team_uuid=""`; the function resolves the owning
+#       team from `project.teams.nodes[0]` and populates the session
+#       team UUID + key + name without consulting `--team`. Skips the
+#       team-membership check (the resolved team IS by definition a
+#       team the project belongs to).
 #
 # On success populates `INSTALL_SESSION_SELECTED_TEAM_*` and
 # `INSTALL_SESSION_SELECTED_PROJECT_*` directly (skips S3 + S4 +
-# pickers).
-#
-# Phase 2 status: STUB. Signature + arg validation wired. Full
-# GraphQL query + null/mismatch validation lands in Phase 4 task T248
-# (US2 — CI / scripted install). Bats tests (T245) drive the failure
-# modes.
+# pickers). The captured project URL flows into the install summary's
+# "Open in Linear" row (FR-041 / T239) so the v0.1.0-compat path
+# enjoys the same operator-facing surface as the discovery path.
 # -----------------------------------------------------------------------------
 install::quick_validate_binding() {
-    local team_uuid="${1:?install::quick_validate_binding: team_uuid required}"
+    # team_uuid may legitimately be empty under the `--project`-alone
+    # branch (T251); only project_uuid is strictly required.
+    local team_uuid="${1-}"
     local project_uuid="${2:?install::quick_validate_binding: project_uuid required}"
 
-    # Phase 2 stub: the full validation query lands in Phase 4 task
-    # T248. For now, accept the inputs verbatim so the helper exists.
-    INSTALL_SESSION_SELECTED_TEAM_ID="$team_uuid"
-    INSTALL_SESSION_SELECTED_PROJECT_ID="$project_uuid"
+    # Linear accepts `null` for the team(id:) variable when callers
+    # only want the project leg — but the schema requires a String so
+    # we pass an empty string and unconditionally compare against the
+    # response's `data.team.id` (which will be null under the §5 row 6
+    # fast path).
+    # shellcheck disable=SC2016
+    local query='query InstallValidateBinding($teamId: String!, $projectId: String!) {
+        team(id: $teamId) { id name key }
+        project(id: $projectId) {
+            id
+            name
+            url
+            teams { nodes { id name key } }
+        }
+    }'
+    local vars
+    vars="$(jq -nc \
+        --arg teamId "$team_uuid" \
+        --arg projectId "$project_uuid" \
+        '{teamId: $teamId, projectId: $projectId}')"
+
+    local response
+    if ! response="$(graphql::query "$query" "$vars")"; then
+        install::_die 3 \
+            "failed to quick-validate --team/--project binding against Linear (FR-044 / §5.5); re-run when connectivity returns"
+    fi
+
+    local project_id
+    project_id="$(printf '%s' "$response" | jq -r '.data.project.id // empty')"
+    if [[ -z "$project_id" ]]; then
+        install::_die 2 \
+            "--project <UUID> not accessible to this API key (FR-044 / install-discovery-graphql.md §5.5)"
+    fi
+
+    local team_id team_key team_name
+    if [[ -n "$team_uuid" ]]; then
+        # Branch (a): both UUIDs passed — validate team leg + membership.
+        team_id="$(printf '%s' "$response" | jq -r '.data.team.id // empty')"
+        if [[ -z "$team_id" ]]; then
+            install::_die 2 \
+                "--team <UUID> not accessible to this API key (FR-044 / install-discovery-graphql.md §5.5)"
+        fi
+        local match
+        match="$(printf '%s' "$response" \
+            | jq -r --arg team_id "$team_id" \
+                '.data.project.teams.nodes // [] | map(.id) | index($team_id) // empty')"
+        if [[ -z "$match" ]]; then
+            install::_die 2 \
+                "--project does not belong to --team (FR-044 / install-discovery-graphql.md §5.5)"
+        fi
+        team_key="$(printf '%s' "$response" | jq -r '.data.team.key // empty')"
+        team_name="$(printf '%s' "$response" | jq -r '.data.team.name // empty')"
+    else
+        # Branch (b): `--project` alone — resolve team from project leg.
+        team_id="$(printf '%s' "$response" | jq -r '.data.project.teams.nodes[0].id // empty')"
+        if [[ -z "$team_id" ]]; then
+            install::_die 2 \
+                "--project <UUID> has no owning team — Linear returned an empty teams connection (FR-044)"
+        fi
+        team_key="$(printf '%s' "$response" | jq -r '.data.project.teams.nodes[0].key // empty')"
+        team_name="$(printf '%s' "$response" | jq -r '.data.project.teams.nodes[0].name // empty')"
+    fi
+
+    INSTALL_SESSION_SELECTED_TEAM_ID="$team_id"
+    INSTALL_SESSION_SELECTED_TEAM_KEY="$team_key"
+    INSTALL_SESSION_SELECTED_TEAM_NAME="$team_name"
+    INSTALL_SESSION_SELECTED_PROJECT_ID="$project_id"
+    INSTALL_SESSION_SELECTED_PROJECT_NAME="$(printf '%s' "$response" | jq -r '.data.project.name // empty')"
+    INSTALL_SESSION_SELECTED_PROJECT_URL="$(printf '%s' "$response" | jq -r '.data.project.url // empty')"
+    INSTALL_SESSION_PROJECT_CHOICE="attach"
     return 0
 }
 
 # -----------------------------------------------------------------------------
-# install::_should_use_discovery_flow  (T232, spec 002 dispatch gate)
+# install::_should_use_discovery_flow  (T232 + T250 + T251, spec 002 dispatch gate)
 #
 # Returns 0 (true) when the new spec-002 viewer-driven discovery flow
 # should run; returns non-zero when the legacy v0.1.0 path should run.
 #
-# Truth table:
-#   --team SET, --project SET                   → legacy (FR-044 fast path)
-#   --team SET, --auto-create SET               → legacy (CI-compat)
-#   --team SET, neither --project nor --auto-create:
-#                                               → legacy (v0.1.0 honoured)
-#   --project SET                               → legacy (existing UUID)
-#   --auto-create SET                           → legacy (v0.1.0 --auto-create)
-#   No flags                                    → discovery (the new default)
+# Truth table (post-Phase-4 — install-flags.md §5):
+#   --team SET, --project SET, no --auto-create  → discovery (T248 fast path
+#                                                  via quick_validate_binding)
+#   --team SET, no --project, no --auto-create   → discovery (T250 — runs
+#                                                  P3 project picker scoped
+#                                                  to passed team)
+#   no --team, --project SET, no --auto-create   → discovery (T251 — team
+#                                                  auto-resolves from
+#                                                  project.teams.nodes[0])
+#   --auto-create SET (with or without --team)   → legacy (v0.1.0
+#                                                  --auto-create preserved
+#                                                  bit-for-bit per FR-044
+#                                                  / install-flags.md §2)
+#   No flags                                     → discovery (default)
 #
-# Phase 4 (US2 — T248..T251) will collapse most legacy paths into the
-# discovery flow's fast-path branches. For Phase 3 the rule is the
-# simpler "any v0.1.0 flag triggers v0.1.0 behaviour" guard so the
-# SC-011 regression suite stays GREEN unchanged.
+# `--auto-create` is the sole hold-out on the legacy path during Phase 4
+# because spec 002's discovery flow's "Create new project" picker
+# option is its semantic replacement; preserving the legacy branch
+# keeps the SC-011 regression contract intact for CI scripts that
+# still pass the flag.
 # -----------------------------------------------------------------------------
 install::_should_use_discovery_flow() {
-    [[ -z "$INSTALL_FLAG_TEAM" ]] \
-        && [[ -z "$INSTALL_FLAG_PROJECT" ]] \
-        && (( INSTALL_FLAG_AUTO_CREATE == 0 ))
+    # `--auto-create` always routes through the legacy v0.1.0 path so
+    # the install::_auto_create_or_attach branch (with its existing
+    # duplicate-name pre-check) stays bit-for-bit identical to v0.1.0.
+    if (( INSTALL_FLAG_AUTO_CREATE == 1 )); then
+        return 1
+    fi
+    # Every other flag combination routes through the discovery flow,
+    # which internally fast-paths via quick_validate_binding (both
+    # UUIDs), resolve_team_from_project (--project alone), or runs the
+    # full S3+S4 pickers (no flags / --team alone).
+    return 0
 }
 
 # -----------------------------------------------------------------------------
-# install::run_discovery_flow  (T232 + T234..T236, FR-037..FR-041 / FR-048)
+# install::run_discovery_flow  (T232 + T234..T236 + T248 + T250 + T251,
+#                               FR-037..FR-041 / FR-044 / FR-048)
 #
 # Drives the spec 002 viewer-driven discovery state machine end-to-end:
 #   S1 → install::prompt_for_api_key            (FR-037)
@@ -3088,6 +3195,16 @@ install::_should_use_discovery_flow() {
 #   S5 → install::run_create_project_branch    (FR-041; only when
 #                                                operator picked
 #                                                "Create new project")
+#
+# FR-044 fast paths (T248 / T250 / T251) — wired BETWEEN S2 and S3:
+#   * --team SET, --project SET → install::quick_validate_binding
+#     (single combined query; skips S3 + S4 entirely; CI canonical path)
+#   * --team SET, no --project  → install::discover_teams's --team
+#     short-circuit populates SELECTED_TEAM_ID without a query; S4 still
+#     runs against that team. (install-flags.md §5 row 5)
+#   * no --team, --project SET  → install::resolve_team_from_project
+#     resolves the owning team from the project's teams connection;
+#     skips both S3 and S4. (install-flags.md §5 row 6)
 #
 # On exit:
 #   * INSTALL_SESSION_SELECTED_TEAM_ID is populated.
@@ -3102,6 +3219,30 @@ install::run_discovery_flow() {
     # fires (US1 scenario 4).
     install::resolve_operator
 
+    # ---- FR-044 fast paths (T248 / T251) ---------------------------------
+    # Both --team and --project passed → quick-validate the binding in
+    # a single round trip and skip the team + project pickers entirely.
+    # The captured project URL feeds the install summary's "Open in
+    # Linear" row.
+    if [[ -n "$INSTALL_FLAG_TEAM" ]] && [[ -n "$INSTALL_FLAG_PROJECT" ]]; then
+        install::quick_validate_binding \
+            "$INSTALL_FLAG_TEAM" "$INSTALL_FLAG_PROJECT"
+        return 0
+    fi
+    # Only --project passed → resolve the owning team from the
+    # project's teams connection; skip both pickers. We thread an empty
+    # team_uuid to install::quick_validate_binding which takes the
+    # `--project`-alone branch and reads `data.project.teams.nodes[0]`.
+    if [[ -z "$INSTALL_FLAG_TEAM" ]] && [[ -n "$INSTALL_FLAG_PROJECT" ]]; then
+        install::quick_validate_binding "" "$INSTALL_FLAG_PROJECT"
+        return 0
+    fi
+
+    # ---- Default path (no flags) and --team-only (T250) ------------------
+    # install::discover_teams + install::pick_team_interactively short-
+    # circuit when --team is set (populating SELECTED_TEAM_ID without a
+    # query or prompt); install::discover_projects then runs the P3
+    # picker scoped to that team per install-flags.md §5 row 5.
     install::discover_teams
     install::pick_team_interactively
 
