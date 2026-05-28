@@ -147,7 +147,7 @@ the same formatting with the literal text `Create new project`.
   prompt is for a secret); spec 002 is the first user.
 - The numbered-list format mirrors `git branch` and `gh repo list`
   conventions operators already know. Spec.md FR-039 shows the
-  literal format `1) HUR — Hurri.AI` — spec 002's emission code
+  literal format `1) ACM — Acme` — spec 002's emission code
   matches this byte-for-byte (the `printf '%-8s' "$key"` width is
   the max team-key length observed in OSH-INFRA;
   v0.2.0 may raise it to terminal-aware).
@@ -373,4 +373,4 @@ is blocked.
   `projectCreate` field shapes.
 - `validation/dogfood-001.md` — origin point of spec 002 (real
   operator feedback during the first dogfood into
-  `~/Code/HURRI_AI/backend`).
+  a downstream consumer repo).

@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — Retroactive sync (commit ab7111b, PR #3)
 
-- **`--retroactive` actually bypasses FR-025's write-authority gate (HURRI dogfood bug)** — v0.1.0 only suppressed the per-spec "non-authoritative worktree" warning row; the underlying gate in `sync_spec_issue` still fired and returned 0 without writing. Result: an operator with 11 existing specs ran `bash src/reconcile.sh --all --retroactive` from a non-`NNN-feature` branch and got ZERO mutations — breaking FR-014's promise that "first reconcile after install backfills every spec". This fix makes the gate genuinely bypass-able when `--retroactive` is set; aggregated INFO row recorded once after the per-spec loop. Two new integration tests in `tests/integration/us5-retroactive-bypass-authority.bats` regression-pin both the bypass and the FR-025-default behavior.
+- **`--retroactive` actually bypasses FR-025's write-authority gate (downstream dogfood bug)** — v0.1.0 only suppressed the per-spec "non-authoritative worktree" warning row; the underlying gate in `sync_spec_issue` still fired and returned 0 without writing. Result: an operator with 11 existing specs ran `bash src/reconcile.sh --all --retroactive` from a non-`NNN-feature` branch and got ZERO mutations — breaking FR-014's promise that "first reconcile after install backfills every spec". This fix makes the gate genuinely bypass-able when `--retroactive` is set; aggregated INFO row recorded once after the per-spec loop. Two new integration tests in `tests/integration/us5-retroactive-bypass-authority.bats` regression-pin both the bypass and the FR-025-default behavior.
 
 ### Changed
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Acknowledgements
 
-The install-ergonomics redesign and the FR-025-bypass fix were both surfaced by the first real-operator dogfood of v0.1.0 into `~/Code/HURRI_AI/backend`. Real users surface real bugs; ship more.
+The install-ergonomics redesign and the FR-025-bypass fix were both surfaced by the first real-operator dogfood of v0.1.0 into a downstream consumer repo. Real users surface real bugs; ship more.
 
 [v0.1.1 entry above is a working draft and will be finalized when spec 002 phases 4-6 land.]
 

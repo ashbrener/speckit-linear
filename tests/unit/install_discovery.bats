@@ -712,7 +712,7 @@ _graphql_call_count() {
         printf 'CHOICE=%s NAME=%s\n' \"\$INSTALL_SESSION_PROJECT_CHOICE\" \"\$INSTALL_SESSION_SELECTED_PROJECT_NAME\"
     "
     [ "$status" -eq 0 ]
-    [[ "$output" == *"CHOICE=attach NAME=hurri-backend"* ]]
+    [[ "$output" == *"CHOICE=attach NAME=acme-backend"* ]]
 }
 
 @test "T226: project discovery — choosing N+1 tail sets choice=create" {

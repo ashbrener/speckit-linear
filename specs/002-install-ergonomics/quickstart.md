@@ -183,7 +183,7 @@ After the team is selected, the install issues
 ```text
 [linear] Projects in OSH:
   1) spec-kit-linear
-  2) hurri-backend
+  2) acme-backend
   3) Create new project
 Pick a project [1-3]:
 ```

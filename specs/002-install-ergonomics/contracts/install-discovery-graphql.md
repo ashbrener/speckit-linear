@@ -246,7 +246,7 @@ The operator never sees this UUID; it's passed internally.)
           },
           {
             "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            "name": "hurri-backend"
+            "name": "acme-backend"
           }
         ]
       }
@@ -260,7 +260,7 @@ The operator never sees this UUID; it's passed internally.)
 ```text
 Projects in OSH:
   1) spec-kit-linear
-  2) hurri-backend
+  2) acme-backend
   3) Create new project
 Pick a project [1-3]:
 ```
