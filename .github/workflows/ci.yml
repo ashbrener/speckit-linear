@@ -263,6 +263,18 @@ jobs:
         # Bash 5.2 = current upstream stable; ships in ubuntu-latest.
         os: [ubuntu-latest, macos-latest]
         bash_version: ["4.4", "5.2"]
+        exclude:
+          # GNU bash 4.4 source (released 2016-09) doesn't compile against the
+          # modern Xcode 16.4 / Darwin 24 SDK — the `snprintf` macro in macOS's
+          # hardened `secure/_stdio.h` conflicts with bash 4.4's own `snprintf`
+          # forward declaration, leading to "conflicting types for
+          # __builtin___snprintf_chk" at compile time. Maintaining a vendored
+          # patch set for that combination isn't worth the marginal coverage —
+          # the bridge's BSD-tool portability (awk, sed) is exercised by the
+          # macos-latest × bash 5.2 combo, and bash 4.4 baseline coverage runs
+          # on ubuntu-latest × bash 4.4.
+          - os: macos-latest
+            bash_version: "4.4"
     env:
       # Integration tests stay off by default. To enable on a specific branch
       # or for a manual run, set this to "1" via a workflow_dispatch input or
@@ -367,11 +379,16 @@ jobs:
             echo "tests/unit/ does not exist yet — skipping."
             exit 0
           fi
-          # Force bats to invoke the matrix-selected bash by exporting it.
-          # bats itself is a bash script, but the test bodies inherit the
-          # BASH_VERSION of the bash that runs each .bats file.
+          # Force bats to invoke the matrix-selected bash. bats's libexec
+          # scripts shebang `#!/usr/bin/env bash`, so the only portable way
+          # to swap interpreters is to put the matrix bash's dir at the
+          # front of PATH so `env bash` resolves to it. Setting BASH alone
+          # is not enough — `env` ignores it. Critical on macOS where the
+          # system bash is 3.2 and rejects bash 4+ features (`declare -g`,
+          # associative arrays, etc.).
+          export PATH="$(dirname "$BATS_BASH"):$PATH"
           export BASH="$BATS_BASH"
-          "$BATS_BASH" -c '"$BATS_BASH" --version'
+          bash --version
           bats --print-output-on-failure --recursive tests/unit
 
       - name: Run bats integration tests
@@ -382,6 +399,7 @@ jobs:
             echo "tests/integration/ does not exist yet — skipping."
             exit 0
           fi
+          export PATH="$(dirname "$BATS_BASH"):$PATH"
           export BASH="$BATS_BASH"
           bats --print-output-on-failure --recursive tests/integration
 
