@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 # shellcheck shell=bats
 # =============================================================================
-# tests/integration/us1-task-phase-overflow.bats — HURRI dogfood fix
+# tests/integration/us1-task-phase-overflow.bats — downstream dogfood fix
 #
-# Regression coverage for the HURRI dogfood bug:
+# Regression coverage for the downstream dogfood bug:
 #
 #   The seed step (FR-021) bootstraps `task-phase:1..task-phase:9` at
 #   workspace-seed time. A spec whose `tasks.md` declares 10+
@@ -84,7 +84,7 @@ setup() {
 
 ## Overview
 
-Regression fixture for the HURRI dogfood bug — exercises the
+Regression fixture for the downstream dogfood bug — exercises the
 `task-phase:N` lazy-create path for N >= 10 at reconcile time.
 SPEC
 

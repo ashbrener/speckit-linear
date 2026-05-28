@@ -3,7 +3,7 @@
 # =============================================================================
 # tests/integration/us5-retroactive-bypass-authority.bats — User Story 5
 #
-# Regression-pin for the v0.1.0 bug surfaced during the HURRI dogfood
+# Regression-pin for the v0.1.0 bug surfaced during the downstream dogfood
 # run: `bash src/reconcile.sh --all --retroactive` completed with ZERO
 # mutations when invoked from any branch that didn't match a spec's
 # canonical NNN-feature name. The cause was that `--retroactive` only
@@ -150,7 +150,7 @@ us5_bypass::setup_three_spec_unrelated_branch() {
 
     # Check out a branch whose name does NOT match any NNN- prefix.
     # From this branch, git_helpers::is_authoritative_for_spec returns
-    # false for every spec — the exact HURRI dogfood condition.
+    # false for every spec — the exact downstream dogfood condition.
     git -C "$SANDBOX_REPO" checkout --quiet -b 'feat/unrelated'
 
     integration::_write_config_yaml > "$LINEAR_CONFIG_PATH"

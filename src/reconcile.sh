@@ -1141,7 +1141,7 @@ reconcile::_resolve_label_id() {
     # The `_resolve_label_ids_array` caller below routes `task-phase:*`
     # through the `allow_create=1` path above so the bootstrap-9 seed
     # set can be lazy-extended to `task-phase:10..N` for specs with
-    # 10+ phases (HURRI dogfood bug, mirrors FR-004b precedent).
+    # 10+ phases (downstream dogfood bug, mirrors FR-004b precedent).
     if [[ "$name" == phase:* ]]; then
         summary::add error "label '${name}' not found in Linear; run \`speckit.linear.seed\` to create phase:* labels"
     else
@@ -1156,7 +1156,7 @@ reconcile::_resolve_label_id() {
 #   `speckit-spec:*` and `task-phase:*` names take the auto-create path;
 #   everything else is lookup-only. (`task-phase:*` is bootstrapped 1..9
 #   by seed per FR-021 but lazy-extended at reconcile time so specs with
-#   10+ phases don't silently drop sub-issues — HURRI dogfood bug.)
+#   10+ phases don't silently drop sub-issues — downstream dogfood bug.)
 #   Names that fail to resolve are SKIPPED from the output (with a
 #   summary::add error already recorded by _resolve_label_id) so the
 #   caller's mutation still fires for the labels that DID resolve —
