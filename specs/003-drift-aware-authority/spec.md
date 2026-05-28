@@ -7,7 +7,7 @@
 **Status**: Draft
 
 **Input**: User description: "Redefine FR-025's write-authority model from
-enforce-on-branch to warn-on-drift. Real-world dogfood (HURRI_AI/backend,
+enforce-on-branch to warn-on-drift. Real-world dogfood (a downstream consumer repo,
 11 specs) proved the hard branch-gate is too strict for merged specs,
 retroactive adoption, and teams iterating on main. The filesystem is the
 authority (Principle I); branch name is a heuristic for 'who has the latest',
@@ -21,7 +21,7 @@ worktree's reconcile is read-only for that spec. The intent was sound:
 prevent a stale worktree on `main` from regressing a spec that another
 worktree is actively progressing on its feature branch.
 
-Real-world dogfood against `HURRI_AI/backend` (11 specs, mostly merged)
+Real-world dogfood against a downstream consumer repo (11 specs, mostly merged)
 proved the hard branch-gate is **too strict** in the common case:
 
 - **Merged specs.** Once a feature PR merges, the canonical
@@ -142,7 +142,7 @@ latest filesystem state for that spec and nothing in Linear is further
 along.
 
 **Why this priority**: This is the single most common dogfood failure
-(merged specs dominate `HURRI_AI/backend`). Without it the bridge cannot
+(merged specs dominate a downstream consumer repo). Without it the bridge cannot
 record the terminal state of any merged spec, which is the bulk of a
 mature repo. It is the minimum viable slice of the redesign.
 
@@ -408,7 +408,7 @@ proceed overwrites Linear from `main`'s disk view.
 - **SC-014**: An operator can reconcile a merged spec from `main` (feature
   branch deleted) with **zero extra flags**, and the spec Issue reaches
   Merged with its `phase:*` label cleared. (Directly fixes the dominant
-  HURRI dogfood failure.)
+  downstream dogfood failure.)
 - **SC-015**: A retroactive first-reconcile into a repo with existing
   specs converges **100% of enumerated specs** to their current state
   with zero `--retroactive` (or any other) flag, with no spec skipped for
