@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# =============================================================================
+# speckit-linear: post-commit
+#
+# Fires AFTER `git commit` succeeds. Git invokes this hook with NO arguments.
+# We read the current branch with `git rev-parse --abbrev-ref HEAD` and, if
+# it matches the spec-kit feature-branch pattern (`<NNN>-...`), invoke the
+# reconciler scoped to that spec.
+#
+# Why: a commit on a feature branch often ticks off tasks in `tasks.md` or
+# advances the lifecycle phase. Without this hook the operator would have
+# to re-run a spec-kit command to refresh Linear; with it, Linear's
+# checklist mirror (FR-006) and last-touched timestamp (FR-004) stay
+# current with whatever the operator just committed.
+#
+# Installed by `specify extension add linear` (or `src/install.sh --dev` for
+# dogfood). Removable by deleting this file from `.git/hooks/`.
+#
+# Constitutional alignment:
+#   Principle II — full reconcile per invocation, no per-commit diff cache.
+#   Principle IV — the commit was made on the feature branch, so the
+#     reconciler will treat this worktree as authoritative for that spec.
+#   Principle VIII — happy path is silent; failures surface only via the
+#     reconciler's structured summary (which we discard here because the
+#     operator wasn't expecting any UI from `git commit`).
+#
+# Latency budget: ~2s ceiling on operator-visible delay, met by
+# backgrounding the reconciler.
+# =============================================================================
+
+set -euo pipefail
+
+# Install-time substitution: the install script rewrites the placeholder
+# below to the absolute path of the bridge repo on the operator's machine.
+SPECKIT_LINEAR_ROOT="__SPECKIT_LINEAR_ROOT__"
+RECONCILER="${SPECKIT_LINEAR_ROOT}/src/reconcile.sh"
+
+# Dogfood guard. The bridge's own dev repo installs these hooks too; we
+# don't want every commit in speckit-linear itself to fire the reconciler
+# unless the dogfood loop has been explicitly opted in. Anything other
+# than the literal string `true` is a no-op.
+if [[ "${SPECKIT_LINEAR_DOGFOOD_SAFE:-true}" != "true" ]]; then
+    exit 0
+fi
+
+# Bail cleanly if the bridge isn't installed at the expected path.
+[[ -x "$RECONCILER" ]] || exit 0
+
+# Resolve the current branch. `git rev-parse --abbrev-ref HEAD` returns
+# `HEAD` on detached-HEAD commits (e.g. mid-rebase, mid-bisect). Skip
+# those — they don't have feature-branch semantics and would only confuse
+# the reconciler's authority check.
+current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [[ -z "$current_branch" || "$current_branch" == "HEAD" ]]; then
+    exit 0
+fi
+
+# Spec-kit feature branches are `<NNN>-<short-name>`. Commits on `main`,
+# `develop`, release branches, etc. are skipped silently — non-spec work
+# isn't the bridge's concern.
+if [[ ! "$current_branch" =~ ^([0-9]+)- ]]; then
+    exit 0
+fi
+feature_number="${BASH_REMATCH[1]}"
+
+# Fire-and-forget. `& disown` detaches the child so the git invocation
+# returns to the operator immediately; output is redirected to /dev/null
+# so the happy path doesn't pollute the post-commit terminal output.
+( "$RECONCILER" --spec "$feature_number" --quiet >/dev/null 2>&1 ) & disown
+
+exit 0

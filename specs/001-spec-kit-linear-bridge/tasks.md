@@ -85,23 +85,23 @@
 
 ### Tests for User Story 2
 
-- [ ] T035 [P] [US2] tests/integration/us2-after-hook-fires.bats — install bridge in a sandbox repo, simulate a spec-kit `/speckit-clarify` invocation, assert the `after_clarify` hook in `.specify/extensions.yml` invokes `speckit.linear.push` (mocked) once
-- [ ] T036 [P] [US2] tests/integration/us2-git-hook-fires.bats — install bridge in a sandbox repo with multiple worktrees, switch one to a feature branch, assert `post-checkout` hook fires `src/reconcile.sh`
-- [ ] T037 [P] [US2] tests/integration/us2-disabled-hook-respected.bats — set `enabled: false` on one `after_*` hook in `.specify/extensions.yml`, run the corresponding spec-kit command, assert reconciler does NOT fire
-- [ ] T038 [P] [US2] tests/integration/us2-non-authoritative-worktree.bats — invoke reconciler from worktree on `main`, assert no Linear writes happen and a read-only view is surfaced (per FR-025/FR-026)
+- [x] T035 [P] [US2] tests/integration/us2-after-hook-fires.bats ✓ 2026-05-28 — install bridge in a sandbox repo, simulate a spec-kit `/speckit-clarify` invocation, assert the `after_clarify` hook in `.specify/extensions.yml` invokes `speckit.linear.push` (mocked) once
+- [x] T036 [P] [US2] tests/integration/us2-git-hook-fires.bats ✓ 2026-05-28 — install bridge in a sandbox repo with multiple worktrees, switch one to a feature branch, assert `post-checkout` hook fires `src/reconcile.sh`
+- [x] T037 [P] [US2] tests/integration/us2-disabled-hook-respected.bats ✓ 2026-05-28 — set `enabled: false` on one `after_*` hook in `.specify/extensions.yml`, run the corresponding spec-kit command, assert reconciler does NOT fire
+- [x] T038 [P] [US2] tests/integration/us2-non-authoritative-worktree.bats ✓ 2026-05-28 — invoke reconciler from worktree on `main`, assert no Linear writes happen and a read-only view is surfaced (per FR-025/FR-026)
 
 ### Implementation for User Story 2
 
-- [ ] T039 [US2] Implement `src/install.sh` skeleton: argument parsing (`--project <UUID>`, `--team <UUID>`, `--auto-create`, `--non-interactive`), dependency verification per FR-018b, exit codes per `contracts/command-shapes.md`
-- [ ] T040 [US2] `src/install.sh`: dependency verification — checks bash 4+, curl, jq, git, gh (optional), MCP wiring in consumer's `.mcp.json`, OAuth status, `.env` presence. Each failure prints copy-paste remediation per Principle VIII Rule 2
-- [ ] T041 [US2] `src/install.sh`: interactive Project + Team picker — auto-detects single-team workspaces (skips prompt), prompts otherwise with the smart-default flow from Q1/Q4 clarifications. Writes resolved UUIDs to `.specify/extensions/linear/linear-config.yml`
-- [ ] T042 [US2] `src/install.sh`: register `after_*` hooks into consumer's `.specify/extensions.yml` per FR-031 (`after_specify`, `after_clarify`, `after_plan`, `after_tasks`, `after_implement`, `after_analyze`), each `optional: false` and pointing at `speckit.linear.push`. Honour any pre-existing `enabled: false` per Principle VII Rules
-- [ ] T043 [US2] `src/install.sh`: install local git hooks per FR-033 — copy `templates/git-hooks/{post-checkout,post-commit,post-merge}` into consumer's `.git/hooks/`. Detect pre-existing hooks; chain rather than overwrite (append a `# speckit-linear hook` block); idempotent on re-install
-- [ ] T044 [P] [US2] templates/git-hooks/post-checkout — shell script invoking `src/reconcile.sh --spec $(parse_branch_for_NNN)` (no-op for non-feature branches); silent on success, warning on Linear API error (per Principle VIII)
-- [ ] T045 [P] [US2] templates/git-hooks/post-commit — shell script invoking `src/reconcile.sh --spec $(parse_branch_for_NNN)` to update memory block + checklist completion
-- [ ] T046 [P] [US2] templates/git-hooks/post-merge — shell script invoking `src/reconcile.sh --all` (merge may have brought in changes to multiple specs)
-- [ ] T047 [US2] `commands/linear-install.md` — AI-invoked install ceremony: documents argument matrix, calls `src/install.sh`, displays the per-step status report (Principle VIII)
-- [ ] T048 [US2] Update `.specify/extensions.yml` registration logic in `src/install.sh` to detect this bridge's own dogfood path (when installing into the speckit-linear repo itself, the registrations are recursive — guard against infinite hook loops)
+- [x] T039 [US2] ✓ 2026-05-28 Implement `src/install.sh` skeleton: argument parsing (`--project <UUID>`, `--team <UUID>`, `--auto-create`, `--non-interactive`), dependency verification per FR-018b, exit codes per `contracts/command-shapes.md`
+- [x] T040 [US2] ✓ 2026-05-28 `src/install.sh`: dependency verification — checks bash 4+, curl, jq, git, gh (optional), MCP wiring in consumer's `.mcp.json`, OAuth status, `.env` presence. Each failure prints copy-paste remediation per Principle VIII Rule 2
+- [x] T041 [US2] ✓ 2026-05-28 `src/install.sh`: interactive Project + Team picker — auto-detects single-team workspaces (skips prompt), prompts otherwise with the smart-default flow from Q1/Q4 clarifications. Writes resolved UUIDs to `.specify/extensions/linear/linear-config.yml`
+- [x] T042 [US2] ✓ 2026-05-28 `src/install.sh`: register `after_*` hooks into consumer's `.specify/extensions.yml` per FR-031 (`after_specify`, `after_clarify`, `after_plan`, `after_tasks`, `after_implement`, `after_analyze`), each `optional: false` and pointing at `speckit.linear.push`. Honour any pre-existing `enabled: false` per Principle VII Rules
+- [x] T043 [US2] ✓ 2026-05-28 `src/install.sh`: install local git hooks per FR-033 — copy `templates/git-hooks/{post-checkout,post-commit,post-merge}` into consumer's `.git/hooks/`. Detect pre-existing hooks; chain rather than overwrite (append a `# speckit-linear hook` block); idempotent on re-install
+- [x] T044 [P] [US2] ✓ 2026-05-28 templates/git-hooks/post-checkout — shell script invoking `src/reconcile.sh --spec $(parse_branch_for_NNN)` (no-op for non-feature branches); silent on success, warning on Linear API error (per Principle VIII)
+- [x] T045 [P] [US2] ✓ 2026-05-28 templates/git-hooks/post-commit — shell script invoking `src/reconcile.sh --spec $(parse_branch_for_NNN)` to update memory block + checklist completion
+- [x] T046 [P] [US2] ✓ 2026-05-28 templates/git-hooks/post-merge — shell script invoking `src/reconcile.sh --all` (merge may have brought in changes to multiple specs)
+- [x] T047 [US2] ✓ 2026-05-28 `commands/linear-install.md` — AI-invoked install ceremony: documents argument matrix, calls `src/install.sh`, displays the per-step status report (Principle VIII)
+- [x] T048 [US2] ✓ 2026-05-28 Update `.specify/extensions.yml` registration logic in `src/install.sh` to detect this bridge's own dogfood path (when installing into the speckit-linear repo itself, the registrations are recursive — guard against infinite hook loops)
 
 **Checkpoint**: US2 complete. Operator never has to manually invoke sync — every lifecycle command and every git operation surfaces in Linear automatically.
 
@@ -132,18 +132,18 @@
 
 ### Tests for User Story 4
 
-- [ ] T054 [P] [US4] tests/integration/us4-seed-fresh-workspace.bats — given a fresh sandbox Linear workspace, run `src/seed.sh`, assert 9 workflow states created with correct type mappings, all `phase:*` and `task-phase:*` labels created, `workflow_state_uuids` map written into `linear-config.yml`
-- [ ] T055 [P] [US4] tests/integration/us4-seed-idempotent.bats — run seed twice in a row, assert second run creates nothing new and emits "already seeded" summary
-- [ ] T056 [P] [US4] tests/integration/us4-install-action.bats — accept the Action installation prompt during install, assert `.github/workflows/speckit-linear-sync.yml` exists with correct triggers and the install step printed `LINEAR_API_TOKEN` provisioning instructions per FR-029
-- [ ] T057 [P] [US4] tests/integration/us4-unseeded-halts.bats — invoke reconciler against an UNSEEDED workspace, assert it halts with a clear error pointing at `speckit.linear.seed` (FR-022)
+- [x] T054 [P] [US4] ✓ 2026-05-28 tests/integration/us4-seed-fresh-workspace.bats — given a fresh sandbox Linear workspace, run `src/seed.sh`, assert 9 workflow states created with correct type mappings, all `phase:*` and `task-phase:*` labels created, `workflow_state_uuids` map written into `linear-config.yml`
+- [x] T055 [P] [US4] ✓ 2026-05-28 tests/integration/us4-seed-idempotent.bats — run seed twice in a row, assert second run creates nothing new and emits "already seeded" summary
+- [x] T056 [P] [US4] ✓ 2026-05-28 tests/integration/us4-install-action.bats — accept the Action installation prompt during install, assert `.github/workflows/speckit-linear-sync.yml` exists with correct triggers and the install step printed `LINEAR_API_TOKEN` provisioning instructions per FR-029
+- [x] T057 [P] [US4] ✓ 2026-05-28 tests/integration/us4-unseeded-halts.bats — invoke reconciler against an UNSEEDED workspace, assert it halts with a clear error pointing at `speckit.linear.seed` (FR-022)
 
 ### Implementation for User Story 4
 
-- [ ] T058 [US4] Implement `src/seed.sh` — creates the 9 required workflow states via `workflowStateCreate` GraphQL mutation (the only hot-path mutation that needs direct GraphQL per the MCP probe). State definitions: Specifying (unstarted), Clarifying (started), Planning (started), Tasking (started), Red-team (started), Implementing (started), Analyzing (started), Ready-to-merge (started), Merged (completed). Captures each UUID at creation and writes the `workflow_state_uuids` map into `linear-config.yml`
-- [ ] T059 [US4] `src/seed.sh`: label creation — workspace-scoped labels `phase:specifying`, `phase:clarifying`, …, `phase:merged`, plus `task-phase:1`..`task-phase:9` (covers up to 9 task phases per spec; expandable). The `speckit-spec:NNN` label is auto-stamped per spec by reconcile, not seeded
-- [ ] T060 [US4] `src/seed.sh`: idempotency — query existing workflow states + labels by name, skip creation for any that already exist; capture UUIDs of existing matches and write to config
-- [ ] T061 [US4] `commands/linear-seed.md` — AI-invoked seed command, calls `src/seed.sh`. Documents the one-shot per-workspace nature and the workflow state schema being created
-- [ ] T062 [US4] templates/github-action.yml — Layer E webhook workflow per `contracts/webhook-action.md` and `validation/github-action-mechanics.md`. Triggers on `pull_request: [opened, ready_for_review, closed]`, `permissions: contents: read`, single `issueUpdate` mutation flipping `stateId` only (no labels, no comments — Principle III)
+- [x] T058 [US4] ✓ 2026-05-28 Implement `src/seed.sh` — creates the 9 required workflow states via `workflowStateCreate` GraphQL mutation (the only hot-path mutation that needs direct GraphQL per the MCP probe). State definitions: Specifying (unstarted), Clarifying (started), Planning (started), Tasking (started), Red-team (started), Implementing (started), Analyzing (started), Ready-to-merge (started), Merged (completed). Captures each UUID at creation and writes the `workflow_state_uuids` map into `linear-config.yml`
+- [x] T059 [US4] ✓ 2026-05-28 `src/seed.sh`: label creation — workspace-scoped labels `phase:specifying`, `phase:clarifying`, …, `phase:merged`, plus `task-phase:1`..`task-phase:9` (covers up to 9 task phases per spec; expandable). The `speckit-spec:NNN` label is auto-stamped per spec by reconcile, not seeded
+- [x] T060 [US4] ✓ 2026-05-28 `src/seed.sh`: idempotency — query existing workflow states + labels by name, skip creation for any that already exist; capture UUIDs of existing matches and write to config
+- [x] T061 [US4] ✓ 2026-05-28 `commands/linear-seed.md` — AI-invoked seed command, calls `src/seed.sh`. Documents the one-shot per-workspace nature and the workflow state schema being created
+- [x] T062 [US4] ✓ 2026-05-28 templates/github-action.yml — Layer E webhook workflow per `contracts/webhook-action.md` and `validation/github-action-mechanics.md`. Triggers on `pull_request: [opened, ready_for_review, closed]`, `permissions: contents: read`, single `issueUpdate` mutation flipping `stateId` only (no labels, no comments — Principle III)
 - [ ] T063 [US4] Update `src/install.sh` to detect Linear workspace seeded-state on first install — query `workflow_state_uuids` presence; if absent and operator has just resolved Team UUID, prompt to run `speckit.linear.seed` immediately or defer
 - [ ] T064 [US4] Update `src/install.sh` to interactively offer Action installation per FR-027 — opt-in prompt, copies `templates/github-action.yml` into `.github/workflows/speckit-linear-sync.yml`, prints `gh secret set LINEAR_API_TOKEN` instructions per FR-029
 - [ ] T065 [US4] `commands/linear-install.md`: document the full install ceremony walkthrough end-to-end per `quickstart.md` (referencing operator-facing prose, not duplicating it)

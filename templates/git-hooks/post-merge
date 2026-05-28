@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# =============================================================================
+# speckit-linear: post-merge
+#
+# Fires AFTER `git merge` (and `git pull` when it produces a merge or
+# fast-forward) completes successfully. Git invokes this hook with one
+# positional argument:
+#
+#   $1 — flag: 1 if the merge was a squash merge, 0 otherwise
+#
+# Unlike post-checkout / post-commit, we ALWAYS invoke `--all` here. A
+# merge can pull in changes that touch arbitrarily many specs at once
+# (e.g. merging `main` into a feature branch brings in newly-merged
+# specs from elsewhere; merging a long-lived branch may close out one
+# spec while advancing another). Scoping to a single spec would risk
+# leaving the other affected specs stale until the operator's next
+# spec-kit command.
+#
+# Installed by `specify extension add linear` (or `src/install.sh --dev` for
+# dogfood). Removable by deleting this file from `.git/hooks/`.
+#
+# Constitutional alignment:
+#   Principle II — full reconcile across every spec; no per-merge diff
+#     reasoning here. The reconciler converges from whatever state the
+#     merge produced.
+#   Principle IV — the reconciler still gates per-spec mutations on
+#     branch authority; `--all` invoked from `main` will be read-only
+#     for every non-authoritative spec (FR-025, FR-026).
+#   Principle VIII — happy path silent; the reconciler's summary is
+#     suppressed here because the operator didn't run a spec-kit
+#     command. Errors that need operator attention surface on the next
+#     interactive sync.
+#
+# Latency budget: ~2s ceiling on operator-visible delay, met by
+# backgrounding the reconciler. `--all` is heavier than `--spec NNN`
+# but still completes in the background after the merge command returns.
+# =============================================================================
+
+set -euo pipefail
+
+# Install-time substitution: the install script rewrites the placeholder
+# below to the absolute path of the bridge repo on the operator's machine.
+SPECKIT_LINEAR_ROOT="__SPECKIT_LINEAR_ROOT__"
+RECONCILER="${SPECKIT_LINEAR_ROOT}/src/reconcile.sh"
+
+# Dogfood guard. The bridge's own dev repo installs these hooks too; we
+# don't want every local merge in speckit-linear itself to fire the
+# reconciler unless the dogfood loop has been explicitly opted in.
+# Anything other than the literal string `true` is a no-op.
+if [[ "${SPECKIT_LINEAR_DOGFOOD_SAFE:-true}" != "true" ]]; then
+    exit 0
+fi
+
+# Bail cleanly if the bridge isn't installed at the expected path.
+[[ -x "$RECONCILER" ]] || exit 0
+
+# Git's post-merge hook receives 1 arg (squash flag). We don't gate on
+# it — squash and regular merges both potentially touch spec state — but
+# we read it so older git versions that omit the arg degrade silently
+# rather than tripping `set -u`.
+was_squash="${1:-0}"
+: "${was_squash}"
+
+# Fire-and-forget across all specs. `& disown` detaches the child so the
+# merge command returns to the operator immediately; output is redirected
+# to /dev/null so the happy path doesn't pollute the merge summary line
+# git prints.
+( "$RECONCILER" --all --quiet >/dev/null 2>&1 ) & disown
+
+exit 0

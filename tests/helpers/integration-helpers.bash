@@ -478,3 +478,129 @@ esac
 EOF
     chmod +x "${MOCK_BIN}/gh"
 }
+
+# -----------------------------------------------------------------------------
+# integration::find_install_sh
+# integration::find_seed_sh
+#
+# Echo the absolute paths to `src/install.sh` and `src/seed.sh` under
+# PROJECT_ROOT. Phase 4 / Phase 6 implementation lands in parallel with
+# these tests; if a script does not yet exist, the test invocation will
+# fail with exit 127 / "No such file" — that is the intended contract
+# enforcement until the implementation agents land their changes.
+# -----------------------------------------------------------------------------
+integration::find_install_sh() {
+    printf '%s' "${PROJECT_ROOT}/src/install.sh"
+}
+
+integration::find_seed_sh() {
+    printf '%s' "${PROJECT_ROOT}/src/seed.sh"
+}
+
+# integration::run_install [args...]
+#   Run the install script with the sandbox repo as cwd and our PATH
+#   override (curl + gh shims) active. Captures stdout, stderr, and
+#   exit code into the bats `run` shape so tests can assert on
+#   `$status` / `$output`.
+#
+# Use as:
+#     run integration::run_install --auto-create --team SANDBOX_TEAM
+integration::run_install() {
+    local install_sh
+    install_sh="$(integration::find_install_sh)"
+    (
+        cd "$SANDBOX_REPO"
+        export SPECKIT_LINEAR_CONFIG="$LINEAR_CONFIG_PATH"
+        export SPECKIT_LINEAR_ROOT="$PROJECT_ROOT"
+        bash "$install_sh" "$@" 2>&1
+    )
+}
+
+# integration::run_seed [args...]
+#   Run the seed script with the sandbox repo as cwd and the PATH
+#   override active. The seed script reads `linear.team.id` from
+#   `linear-config.yml` (the helper-emitted default uses
+#   `aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa`), or honours an explicit
+#   `--team <UUID>` flag.
+integration::run_seed() {
+    local seed_sh
+    seed_sh="$(integration::find_seed_sh)"
+    (
+        cd "$SANDBOX_REPO"
+        export SPECKIT_LINEAR_CONFIG="$LINEAR_CONFIG_PATH"
+        export SPECKIT_LINEAR_ROOT="$PROJECT_ROOT"
+        bash "$seed_sh" "$@" 2>&1
+    )
+}
+
+# -----------------------------------------------------------------------------
+# integration::setup_bare_sandbox
+#
+# Build a hermetic consumer-repo sandbox that does NOT yet have the
+# bridge installed: no `.specify/extensions/linear/linear-config.yml`,
+# no `.specify/extensions.yml`, no `.git/hooks/post-checkout` from the
+# bridge. Used by US4 (install + seed ceremony) and by US2 install-test
+# scenarios that need to exercise the install path itself.
+#
+# Exports SANDBOX_REPO / MOCK_BIN / MOCK_LINEAR_STATE / LINEAR_CONFIG_PATH
+# identically to `setup_sandbox`, but does NOT drop the config file —
+# `install.sh` is expected to create it.
+# -----------------------------------------------------------------------------
+integration::setup_bare_sandbox() {
+    SANDBOX_REPO="${BATS_TEST_TMPDIR}/repo"
+    MOCK_BIN="${BATS_TEST_TMPDIR}/bin"
+    MOCK_LINEAR_STATE="${BATS_TEST_TMPDIR}/mock-linear-state"
+    LINEAR_CONFIG_PATH="${SANDBOX_REPO}/.specify/extensions/linear/linear-config.yml"
+
+    mkdir -p "$SANDBOX_REPO" "$MOCK_BIN" "$MOCK_LINEAR_STATE"
+    mkdir -p "${SANDBOX_REPO}/.specify/extensions/linear"
+    mkdir -p "${SANDBOX_REPO}/specs"
+
+    export SANDBOX_REPO MOCK_BIN MOCK_LINEAR_STATE LINEAR_CONFIG_PATH
+
+    printf '0' > "${MOCK_LINEAR_STATE}/call_count"
+    : > "${MOCK_LINEAR_STATE}/calls.log"
+    : > "${MOCK_LINEAR_STATE}/classified.log"
+
+    export GIT_AUTHOR_NAME='Integration Test'
+    export GIT_AUTHOR_EMAIL='integration@example.com'
+    export GIT_COMMITTER_NAME='Integration Test'
+    export GIT_COMMITTER_EMAIL='integration@example.com'
+    export GIT_CONFIG_GLOBAL=/dev/null
+    export GIT_CONFIG_SYSTEM=/dev/null
+
+    git -C "$SANDBOX_REPO" init --initial-branch=main --quiet
+    printf 'sandbox consumer repo\n' > "${SANDBOX_REPO}/README.md"
+    git -C "$SANDBOX_REPO" add README.md
+    git -C "$SANDBOX_REPO" commit --quiet -m 'initial commit'
+
+    cat > "${SANDBOX_REPO}/.env" <<'ENV'
+LINEAR_API_KEY=lin_api_integration_fake
+ENV
+
+    integration::_install_curl_shim
+    export PATH="${MOCK_BIN}:${PATH}"
+}
+
+# -----------------------------------------------------------------------------
+# integration::add_worktree <branch>
+#
+# Add a worktree under $BATS_TEST_TMPDIR/wt-<branch> tracking the named
+# branch. Creates the branch from the current HEAD if it does not yet
+# exist. Exports SANDBOX_WORKTREE_<UPPER> for the test body.
+#
+# Used by US2 multi-worktree scenarios (T036, T038). The branch name
+# determines write-authority per FR-025.
+# -----------------------------------------------------------------------------
+integration::add_worktree() {
+    local branch="$1"
+    local wt_path="${BATS_TEST_TMPDIR}/wt-${branch}"
+
+    if ! git -C "$SANDBOX_REPO" show-ref --verify --quiet "refs/heads/${branch}"; then
+        git -C "$SANDBOX_REPO" branch --quiet "${branch}" HEAD
+    fi
+    git -C "$SANDBOX_REPO" worktree add --quiet "$wt_path" "$branch"
+
+    local var_name="SANDBOX_WORKTREE_$(printf '%s' "$branch" | tr '[:lower:]-' '[:upper:]_')"
+    export "${var_name}=${wt_path}"
+}

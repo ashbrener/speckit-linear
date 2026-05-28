@@ -1,0 +1,508 @@
+# =============================================================================
+# speckit-linear-sync — Layer E webhook for the spec-kit <-> Linear bridge
+# =============================================================================
+#
+# This file is the CONSUMER-SIDE workflow shipped by the `speckit-linear`
+# extension. It is copied verbatim into each consumer repo at
+# `.github/workflows/speckit-linear-sync.yml` by
+# `specify extension add linear --with-action` (or by hand if the operator
+# declined the auto-install). It is NOT the bridge's own CI workflow — the
+# bridge's CI lives at `.github/workflows/ci.yml` in the bridge repo and is
+# unrelated.
+#
+# WHAT IT DOES
+# ------------
+# Flips the matching Linear spec Issue's workflow state when a PR transitions
+# between three pull-request events:
+#
+#   GitHub event                                  Linear target state
+#   ------------                                  -------------------
+#   pull_request: opened                          ready_to_merge
+#   pull_request: ready_for_review                ready_to_merge
+#   pull_request: closed (with merged == true)    merged
+#
+# `closed` events where `merged == false` (drop-closed PRs) are filtered out
+# at the job level — those intentionally leave Linear at its last-known
+# state. The operator can manually move the spec Issue to `cancelled` via
+# `/speckit-linear-push` from a worktree if desired (that's Layer D's job).
+#
+# WHAT IT DOES NOT DO (constitutional firebreak — Principle III)
+# --------------------------------------------------------------
+# This Action mutates **exactly one** Linear field per fire:
+# `issueUpdate(id: <spec issue UUID>, input: { stateId: <target UUID> })`.
+#
+# It MUST NOT (any of these is a defect, not an optimisation):
+#   * Add, remove, or modify Linear labels of any kind.
+#   * Post Linear comments to the spec Issue, sub-issues, or the Project.
+#   * Create, update, or archive task-phase sub-issues.
+#   * Change the spec Issue's description, assignee, priority, project,
+#     milestone, or any field other than `stateId`.
+#   * Change the Linear Project's status, summary, dates, or anything else.
+#   * Archive race-duplicate Issues (Layer D's `reconcile.sh` owns dedup).
+#   * Call the GitHub API in any form — no PR comments, no annotations,
+#     no labels on the GitHub PR, no statuses, no Issue mutations.
+#   * Touch `.specify/extensions/linear/linear-config.yml` or any other
+#     filesystem path under the checked-out repo.
+#
+# All of the above belong to Layer D (`src/reconcile.sh`). This Action is
+# the real-time accelerator for SC-010 ("Linear reflects PR phase within
+# one minute"); Layer D is the correctness guarantee for SC-011 ("Linear
+# converges to filesystem truth regardless of webhook health").
+#
+# PROVISIONING `LINEAR_API_TOKEN` (one-time, per consumer repo) — FR-029
+# ----------------------------------------------------------------------
+# The bridge does NOT provision this secret automatically (FR-029 locks
+# token handling in operator hands). The three-step ceremony:
+#
+#   1. Visit https://linear.app/settings/api and create a new personal API
+#      key. Suggested name: `speckit-linear-sync`. Copy the token — it
+#      starts with `lin_api_…`.
+#
+#      Token scope trade-off:
+#        * Personal API key:    simplest; ties to the operator account.
+#                               Full workspace access.
+#        * Machine-user account: dedicated bot Linear account (recommended
+#                               for shared / OSS repos). Scoped to whatever
+#                               that bot account can see.
+#
+#   2. Set the secret on the consumer repo:
+#
+#        gh secret set LINEAR_API_TOKEN -R <owner>/<repo>
+#        # (paste token when prompted; Ctrl-D to submit)
+#
+#   3. Verify presence (no value leak):
+#
+#        gh secret list -R <owner>/<repo> | grep LINEAR_API_TOKEN
+#
+# Token rotated / revoked? Re-run step 2 with the new value. No workflow
+# edit needed. Until then, Layer D's `speckit.linear.push` keeps Linear
+# converging on every reconcile (FR-030).
+#
+# IDEMPOTENCY (FR-030)
+# --------------------
+# Linear's `issueUpdate` with the same `stateId` is a no-op when the Issue
+# is already in that state (no activity-log entry written). Re-firing on
+# the same event produces the same Linear state. Running this Action AND
+# then `/speckit-linear-push` from a worktree produces the same Linear
+# state. Either layer alone keeps the bridge converging.
+#
+# OBSERVABILITY (Principle VIII)
+# ------------------------------
+# Every run logs its decision to stderr with GitHub Actions-flavoured
+# annotations (`::error::`, `::warning::`). Operators discover broken
+# Linear API tokens by seeing red Action runs on PRs; the bridge does
+# NOT signal webhook health out-of-band. Layer D fills any gaps.
+#
+# RUNTIME
+# -------
+# Targets `ubuntu-latest`, which preinstalls `bash`, `curl`, `jq`, and
+# `yq` (Mike Farah build). No external Actions besides `actions/checkout@v4`.
+# Self-hosted runners without `yq` need to pin `mikefarah/yq-action@v4.x`
+# as a step before the config-read step — see `webhook-action.md` §10.
+#
+# RELATED CONTRACTS
+# -----------------
+# Canonical:           specs/001-spec-kit-linear-bridge/contracts/webhook-action.md
+# Reference YAML:      validation/github-action-mechanics.md
+# Mutation shapes:     specs/001-spec-kit-linear-bridge/contracts/linear-graphql-mutations.md §5.1
+# Config schema:       specs/001-spec-kit-linear-bridge/contracts/config-schema.json
+# Constitution:        .specify/memory/constitution.md (Principle III)
+# Requirements:        FR-027, FR-028, FR-029, FR-030, FR-032
+# =============================================================================
+
+name: speckit-linear-sync
+
+# Trigger on the three PR events that change spec lifecycle phase.
+# `synchronize` is intentionally excluded — Layer D handles mid-PR commits.
+# `reopened` is intentionally excluded — does not change phase semantics.
+# `edited`, `assigned`, `review_requested`, etc. are unrelated to lifecycle.
+on:
+  pull_request:
+    types: [opened, ready_for_review, closed]
+
+# Minimum scope possible. The Action calls ZERO GitHub APIs. The only
+# write target is Linear via LINEAR_API_TOKEN. `contents: read` is the
+# documented minimum required for `actions/checkout@v4` to clone the repo
+# so the runner can read `.specify/extensions/linear/linear-config.yml`.
+#
+# Adding `pull-requests: write`, `issues: write`, `contents: write`, or
+# `id-token: write` to this block is a Principle III violation and a PR
+# blocker. See `webhook-action.md` §2.
+permissions:
+  contents: read
+
+# Defensive concurrency: collapse rapid event bursts on the same head ref
+# (e.g. `opened` immediately followed by `ready_for_review` within seconds).
+# Cancelling the in-flight run is safe because each run is fully
+# deterministic from the event payload + checked-out config — there is no
+# partial state to preserve. T077 dogfood may revise this if races prove
+# benign in practice (see `webhook-action.md` §10).
+concurrency:
+  group: speckit-linear-sync-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flip-spec-issue-state:
+    name: Flip spec Issue workflow state
+    runs-on: ubuntu-latest
+
+    # Only run on `opened`, `ready_for_review`, or `closed-with-merged`.
+    # Drop-close PRs (closed && !merged) are filtered out here so the job
+    # never starts — no log noise, no wasted minutes. The expression reads
+    # as: "either the event is NOT a close, OR the close was a merge."
+    if: >-
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
+
+    steps:
+      # ---------------------------------------------------------------
+      # Step 1 — Checkout
+      # ---------------------------------------------------------------
+      # We need the repo's `.specify/extensions/linear/linear-config.yml`
+      # to read the Project UUID and the workflow-state UUIDs (FR-032).
+      # Default fetch-depth (1) is sufficient — we only read one file at
+      # the PR head commit, no history walking needed.
+      - name: Checkout consumer repo
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # Step 2 — Resolve spec feature number from branch name
+      # ---------------------------------------------------------------
+      # Branch convention (FR-028): `NNN-<kebab-slug>` where NNN is the
+      # zero-padded spec number (3+ digits). Non-feature branches
+      # (`dependabot/...`, `chore/...`, raw `main`, etc.) are normal and
+      # expected — exit cleanly so Dependabot et al. don't see red checks.
+      - name: Resolve spec feature number from branch name
+        id: resolve_branch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+
+          # The canonical pattern, anchored at the start of the ref.
+          # `^[0-9]{3,}-` per FR-028 ("e.g. branch `001-spec-kit-linear-bridge`
+          # → feature number `001`"). 3+ digits accommodates triple-digit
+          # spec numbers in long-lived repos.
+          if [[ ! "$HEAD_REF" =~ ^([0-9]{3,})- ]]; then
+            echo "Branch '$HEAD_REF' is not a spec-kit feature branch. Skipping."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ${BASH_REMATCH[1]} is the captured NNN. Use it verbatim as
+          # the feature number — preserves leading zeros so the spec
+          # label matches `speckit-spec:001` exactly per FR-004b.
+          FEATURE_NUMBER="${BASH_REMATCH[1]}"
+          SPEC_LABEL="speckit-spec:${FEATURE_NUMBER}"
+
+          echo "feature_number=${FEATURE_NUMBER}" >>"$GITHUB_OUTPUT"
+          echo "spec_label=${SPEC_LABEL}"         >>"$GITHUB_OUTPUT"
+          echo "skip=false"                       >>"$GITHUB_OUTPUT"
+          echo "Resolved feature '${FEATURE_NUMBER}' from branch '${HEAD_REF}' (label: ${SPEC_LABEL})."
+
+      # ---------------------------------------------------------------
+      # Step 3 — Read .specify/extensions/linear/linear-config.yml
+      # ---------------------------------------------------------------
+      # Pulls the four values the rest of the job needs:
+      #   * linear.project.id                            (FR-002)
+      #   * linear.team.id                               (FR-002; surfaced for logs only)
+      #   * linear.workflow_state_uuids.ready_to_merge   (FR-032)
+      #   * linear.workflow_state_uuids.merged           (FR-032)
+      #
+      # All four are REQUIRED by `contracts/config-schema.json`. Any
+      # missing value means the operator forgot to run
+      # `/speckit-linear-seed` (or a stale checkout pre-dates the seed).
+      # Fail red with the exact remediation command.
+      - name: Read linear-config.yml
+        id: read_config
+        if: steps.resolve_branch.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+
+          CFG=".specify/extensions/linear/linear-config.yml"
+
+          if [[ ! -f "$CFG" ]] || [[ ! -r "$CFG" ]]; then
+            echo "::error::${CFG} is missing or unreadable on this commit."
+            echo "::error::Run 'specify extension add linear' in the consumer repo and commit the generated config."
+            exit 1
+          fi
+
+          # `yq -r` returns the literal string "null" when a path is
+          # absent, which is the only value we need to guard against
+          # alongside empty strings. Mike Farah `yq` v4+ is preinstalled
+          # on `ubuntu-latest`.
+          PROJECT_ID=$(yq -r '.linear.project.id // ""' "$CFG")
+          TEAM_ID=$(yq -r    '.linear.team.id    // ""' "$CFG")
+          STATE_READY=$(yq -r '.linear.workflow_state_uuids.ready_to_merge // ""' "$CFG")
+          STATE_MERGED=$(yq -r '.linear.workflow_state_uuids.merged         // ""' "$CFG")
+
+          if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "null" ]]; then
+            echo "::error::linear.project.id missing in ${CFG}."
+            echo "::error::Re-run 'specify extension add linear' to repopulate."
+            exit 1
+          fi
+          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "null" ]]; then
+            echo "::error::linear.team.id missing in ${CFG}."
+            echo "::error::Re-run 'specify extension add linear' to repopulate."
+            exit 1
+          fi
+          if [[ -z "$STATE_READY" || "$STATE_READY" == "null" ]]; then
+            echo "::error::State 'ready_to_merge' UUID missing in linear.workflow_state_uuids."
+            echo "::error::Run '/speckit-linear-seed' to capture workflow-state UUIDs (FR-032)."
+            exit 1
+          fi
+          if [[ -z "$STATE_MERGED" || "$STATE_MERGED" == "null" ]]; then
+            echo "::error::State 'merged' UUID missing in linear.workflow_state_uuids."
+            echo "::error::Run '/speckit-linear-seed' to capture workflow-state UUIDs (FR-032)."
+            exit 1
+          fi
+
+          # Surface the resolved values (UUIDs are non-sensitive — they
+          # identify resources, not authenticate). Helps post-mortem
+          # debugging on a red run without needing to fetch logs.
+          echo "project_id=${PROJECT_ID}"   >>"$GITHUB_OUTPUT"
+          echo "team_id=${TEAM_ID}"         >>"$GITHUB_OUTPUT"
+          echo "state_ready=${STATE_READY}" >>"$GITHUB_OUTPUT"
+          echo "state_merged=${STATE_MERGED}" >>"$GITHUB_OUTPUT"
+          echo "Config OK: project=${PROJECT_ID} team=${TEAM_ID}"
+
+      # ---------------------------------------------------------------
+      # Step 4 — Determine target workflow state UUID from the event
+      # ---------------------------------------------------------------
+      # Mapping is locked by FR-027 + the `webhook-action.md` §1 table.
+      # `closed` only reaches this step when `merged == true` (job-level
+      # `if:` filtered the drop-closes out).
+      - name: Determine target workflow state
+        id: target_state
+        if: steps.resolve_branch.outputs.skip != 'true'
+        env:
+          ACTION: ${{ github.event.action }}
+          STATE_READY: ${{ steps.read_config.outputs.state_ready }}
+          STATE_MERGED: ${{ steps.read_config.outputs.state_merged }}
+        run: |
+          set -euo pipefail
+
+          case "$ACTION" in
+            opened|ready_for_review)
+              TARGET_UUID="$STATE_READY"
+              TARGET_KEY="ready_to_merge"
+              ;;
+            closed)
+              # The job-level `if:` guarantees merged == true here.
+              TARGET_UUID="$STATE_MERGED"
+              TARGET_KEY="merged"
+              ;;
+            *)
+              # Defensive: shouldn't happen given `on: pull_request.types`.
+              echo "::error::Unexpected pull_request action '${ACTION}'. This is a workflow bug."
+              exit 1
+              ;;
+          esac
+
+          echo "target_uuid=${TARGET_UUID}" >>"$GITHUB_OUTPUT"
+          echo "target_key=${TARGET_KEY}"   >>"$GITHUB_OUTPUT"
+          echo "Event '${ACTION}' maps to target state '${TARGET_KEY}' (${TARGET_UUID})."
+
+      # ---------------------------------------------------------------
+      # Step 5 — Locate spec Issue UUID in Linear (by label + project)
+      # ---------------------------------------------------------------
+      # Identity per FR-004b: the label `speckit-spec:NNN` scoped to the
+      # consumer repo's Project UUID uniquely identifies the spec Issue.
+      #
+      # Multi-match race semantics (FR-004b): if two Issues share the
+      # label (which can happen if Layer D and a manual operator both
+      # created one during a brief window), the most-recent `updatedAt`
+      # wins. The Action does NOT archive the loser — that's Layer D's
+      # responsibility (Principle III). We just log a warning.
+      #
+      # Zero-match: the spec Issue doesn't exist yet (first PR fired
+      # before any `/speckit-*` command ran `push`). Warn and exit 0;
+      # Layer D will create the Issue on the next reconcile, and the
+      # next PR event will flip it correctly.
+      #
+      # Wire format note (one detail Linear docs are specific about):
+      # the auth header is `Authorization: <raw token>` — NO `Bearer`
+      # prefix. Implementers get this wrong constantly.
+      - name: Locate spec Issue in Linear
+        id: locate_issue
+        if: steps.resolve_branch.outputs.skip != 'true'
+        env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+          SPEC_LABEL: ${{ steps.resolve_branch.outputs.spec_label }}
+          PROJECT_ID: ${{ steps.read_config.outputs.project_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${LINEAR_API_TOKEN:-}" ]]; then
+            echo "::error::LINEAR_API_TOKEN secret is missing or empty."
+            echo "::error::Provision it with: gh secret set LINEAR_API_TOKEN -R ${GITHUB_REPOSITORY}"
+            echo "::error::See https://linear.app/settings/api to mint a token (suggested name: speckit-linear-sync)."
+            exit 1
+          fi
+
+          # GraphQL query: locate spec Issue by label + project.
+          # Per `validation/linear-mcp-runtime-probe.md` §A and
+          # `contracts/webhook-action.md` §5.2, the flat label filter
+          # shape (`labels: { name: { eq } }`) is sufficient — Linear's
+          # GraphQL resolves the join server-side. `orderBy: updatedAt`
+          # ensures we can pick the most-recent on multi-match.
+          QUERY_BODY=$(jq -nc \
+            --arg label "$SPEC_LABEL" \
+            --arg project "$PROJECT_ID" \
+            '{
+              query: "query LocateSpecIssue($label: String!, $project: ID!) { issues(filter: { labels: { name: { eq: $label } }, project: { id: { eq: $project } } }, orderBy: updatedAt) { nodes { id updatedAt } } }",
+              variables: { label: $label, project: $project }
+            }')
+
+          # Capture both body and HTTP status so we can distinguish
+          # GraphQL-level errors (200 + `errors` array) from transport
+          # failures (4xx/5xx). `-w '\n%{http_code}'` appends the code
+          # as a final newline-prefixed line.
+          RESPONSE=$(curl --silent --show-error \
+            --request POST \
+            --url https://api.linear.app/graphql \
+            --header "Authorization: ${LINEAR_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "$QUERY_BODY" \
+            --write-out '\n%{http_code}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::error::Linear GraphQL returned HTTP ${HTTP_CODE} on issue lookup."
+            echo "::error::Response: ${BODY}"
+            # 401 specifically: token is expired or revoked.
+            if [[ "$HTTP_CODE" == "401" ]]; then
+              echo "::error::Token appears expired or revoked. Rotate via https://linear.app/settings/api and re-run: gh secret set LINEAR_API_TOKEN -R ${GITHUB_REPOSITORY}"
+            fi
+            exit 1
+          fi
+
+          # GraphQL-level errors come back HTTP 200 with an `errors`
+          # array — surface them rather than silently treating them as
+          # empty results.
+          ERRORS=$(echo "$BODY" | jq -c '.errors // empty')
+          if [[ -n "$ERRORS" ]]; then
+            echo "::error::Linear GraphQL errors on issue lookup: ${ERRORS}"
+            exit 1
+          fi
+
+          NODES=$(echo "$BODY" | jq -c '.data.issues.nodes // []')
+          COUNT=$(echo "$NODES" | jq 'length')
+
+          if [[ "$COUNT" -eq 0 ]]; then
+            # FR-030: Action is allowed to no-op when Layer D hasn't
+            # caught up yet. Warn loudly so it's visible in the Actions
+            # log; exit 0 so the PR check stays green (this is expected
+            # for the very first PR on a brand-new spec).
+            echo "::warning::No Linear Issue found for label '${SPEC_LABEL}' in project ${PROJECT_ID}."
+            echo "::warning::Layer D (speckit.linear.push) will create the Issue on the next reconcile."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$COUNT" -gt 1 ]]; then
+            # FR-004b: multi-match race. Most-recent wins; Layer D
+            # dedups. The Action MUST NOT archive losers — that would
+            # cross the Layer III firebreak.
+            echo "::warning::Multiple Linear Issues match '${SPEC_LABEL}' in project ${PROJECT_ID} (count: ${COUNT}). Using most-recent updatedAt; Layer D will archive duplicates on next reconcile."
+          fi
+
+          # `sort_by(.updatedAt) | reverse | .[0]` picks the most-recent
+          # regardless of input order. Linear's `orderBy: updatedAt`
+          # is ascending by default; we want descending pick.
+          ISSUE_ID=$(echo "$NODES" | jq -r 'sort_by(.updatedAt) | reverse | .[0].id')
+
+          if [[ -z "$ISSUE_ID" || "$ISSUE_ID" == "null" ]]; then
+            # Shouldn't happen if COUNT > 0 but the node lacks id —
+            # treat as a Linear API contract violation.
+            echo "::error::Located ${COUNT} Issue(s) but could not extract id from response: ${BODY}"
+            exit 1
+          fi
+
+          echo "issue_id=${ISSUE_ID}" >>"$GITHUB_OUTPUT"
+          echo "skip=false"           >>"$GITHUB_OUTPUT"
+          echo "Located spec Issue ${ISSUE_ID} for label '${SPEC_LABEL}'."
+
+      # ---------------------------------------------------------------
+      # Step 6 — Flip the spec Issue's workflow state (THE ONE MUTATION)
+      # ---------------------------------------------------------------
+      # The single permitted Linear write for the entire Layer E surface.
+      # `input` contains ONLY `stateId`. Adding any other field is a
+      # Principle III violation and a PR blocker. Reviewers verify this
+      # against `webhook-action.md` §9 on every PR touching this file.
+      #
+      # Idempotency: if the Issue is already in the target state, Linear
+      # returns `success: true` with no activity-log entry (per
+      # `linear-mcp-tool-signatures.md` §5 — `save_*` short-circuits on
+      # unchanged input). Re-firing the same event is safe.
+      - name: Flip spec Issue workflow state
+        id: flip_state
+        if: >-
+          steps.resolve_branch.outputs.skip != 'true' &&
+          steps.locate_issue.outputs.skip != 'true'
+        env:
+          LINEAR_API_TOKEN: ${{ secrets.LINEAR_API_TOKEN }}
+          ISSUE_ID: ${{ steps.locate_issue.outputs.issue_id }}
+          STATE_ID: ${{ steps.target_state.outputs.target_uuid }}
+          TARGET_KEY: ${{ steps.target_state.outputs.target_key }}
+          SPEC_LABEL: ${{ steps.resolve_branch.outputs.spec_label }}
+        run: |
+          set -euo pipefail
+
+          # Build the mutation body with `jq -nc` so variable values
+          # are properly JSON-escaped — never use string interpolation
+          # for GraphQL payloads.
+          MUTATION_BODY=$(jq -nc \
+            --arg id "$ISSUE_ID" \
+            --arg stateId "$STATE_ID" \
+            '{
+              query: "mutation FlipSpecIssueState($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success } }",
+              variables: { id: $id, stateId: $stateId }
+            }')
+
+          RESPONSE=$(curl --silent --show-error \
+            --request POST \
+            --url https://api.linear.app/graphql \
+            --header "Authorization: ${LINEAR_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "$MUTATION_BODY" \
+            --write-out '\n%{http_code}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::error::issueUpdate failed: HTTP ${HTTP_CODE}"
+            echo "::error::Response: ${BODY}"
+            if [[ "$HTTP_CODE" == "401" ]]; then
+              echo "::error::Token appears expired or revoked. Rotate via https://linear.app/settings/api and re-run: gh secret set LINEAR_API_TOKEN -R ${GITHUB_REPOSITORY}"
+            fi
+            exit 1
+          fi
+
+          ERRORS=$(echo "$BODY" | jq -c '.errors // empty')
+          if [[ -n "$ERRORS" ]]; then
+            echo "::error::issueUpdate GraphQL errors: ${ERRORS}"
+            # A common one: stateId points at a deleted workflow state.
+            # The error body will name it ("STATE_NOT_FOUND" or similar);
+            # surface the remediation command alongside.
+            echo "::error::If the error is STATE_NOT_FOUND or similar, run '/speckit-linear-seed --force' to recreate workflow states and update linear-config.yml."
+            exit 1
+          fi
+
+          SUCCESS=$(echo "$BODY" | jq -r '.data.issueUpdate.success // false')
+          if [[ "$SUCCESS" != "true" ]]; then
+            echo "::error::issueUpdate returned success=false: ${BODY}"
+            exit 1
+          fi
+
+          # ---------------------------------------------------------
+          # Step 7 — Structured success log
+          # ---------------------------------------------------------
+          # Single-line summary per `webhook-action.md` §5.3. Operators
+          # grepping Action logs for "Flipped" will find every successful
+          # state change with both the Issue UUID and the target state
+          # key (human-readable, not the opaque target UUID).
+          echo "Flipped ${ISSUE_ID} -> ${TARGET_KEY} (label: ${SPEC_LABEL})."

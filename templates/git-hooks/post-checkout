@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# =============================================================================
+# speckit-linear: post-checkout
+#
+# Fires AFTER `git checkout` (and `git switch`) finishes. Git invokes this
+# hook with three positional arguments:
+#
+#   $1 — the ref of the previous HEAD (40-char SHA)
+#   $2 — the ref of the new HEAD       (40-char SHA)
+#   $3 — flag: 1 if branch checkout, 0 if file checkout
+#
+# We only care about branch checkouts ($3 == 1). When the new branch matches
+# a spec-kit feature-branch pattern (`<NNN>-...`) we kick off a reconcile
+# scoped to that spec so Linear's branch/worktree memory block (FR-004) and
+# write-authority gating (FR-025, Principle IV) stay accurate without the
+# operator running a spec-kit command.
+#
+# Installed by `specify extension add linear` (or `src/install.sh --dev` for
+# dogfood). Removable by deleting this file from `.git/hooks/`. Idempotent
+# re-installation is the install script's responsibility — this template is
+# a leaf file.
+#
+# Constitutional alignment:
+#   Principle II — reconcile, never event-push. We invoke the reconciler
+#     with --spec NNN; the reconciler itself decides what (if anything) to
+#     push. We don't diff or remember per-checkout state here.
+#   Principle IV — write-authority follows the worktree. The reconciler
+#     gates per-spec mutation on `git_helpers::is_authoritative_for_spec`;
+#     this hook is safe to fire from ANY checkout because non-authoritative
+#     invocations degrade to read-only display (FR-026).
+#   Principle VIII — observable failure. We background the reconciler
+#     and suppress its output ONLY on the happy path; errors still surface
+#     via the reconciler's structured summary on its own terms.
+#
+# Latency budget: per plan.md, this hook must not add more than ~2s to the
+# operator-perceived checkout time. We achieve this by detaching the
+# reconciler into the background (`& disown`).
+# =============================================================================
+
+set -euo pipefail
+
+# Install-time substitution: the install script rewrites the placeholder
+# below to the absolute path of the bridge repo on the operator's machine.
+# .git/hooks/ is per-clone and unversioned, so we can't resolve the bridge
+# path relative to this hook file — the install step has to inject it.
+SPECKIT_LINEAR_ROOT="__SPECKIT_LINEAR_ROOT__"
+RECONCILER="${SPECKIT_LINEAR_ROOT}/src/reconcile.sh"
+
+# Dogfood guard: the bridge's own dev repo installs these hooks too, but
+# we don't want every local commit/checkout in speckit-linear itself to
+# fire the reconciler unless the dogfood loop has been explicitly opted
+# in. Anything other than the literal string `true` is a no-op.
+if [[ "${SPECKIT_LINEAR_DOGFOOD_SAFE:-true}" != "true" ]]; then
+    exit 0
+fi
+
+# Bail cleanly if the bridge isn't installed at the expected path. This is
+# the expected state on a fresh clone before the operator runs the install
+# step, or after they've uninstalled the bridge but left the hook in place.
+[[ -x "$RECONCILER" ]] || exit 0
+
+# Git's post-checkout hook receives exactly 3 args. If we somehow got fewer
+# (older git, manual invocation), don't try to interpret them.
+if (( $# < 3 )); then
+    exit 0
+fi
+
+prev_head="$1"
+new_head="$2"
+is_branch_checkout="$3"
+
+# We don't use the SHA values, but `set -u` would trip if we referenced an
+# unset positional. Touch them so shellcheck SC2034 stays quiet too.
+: "${prev_head}" "${new_head}"
+
+# File checkouts (e.g. `git checkout -- path/to/file`) flag this as 0;
+# those never change branch identity, so nothing to reconcile.
+if [[ "$is_branch_checkout" != "1" ]]; then
+    exit 0
+fi
+
+# Resolve the new branch name. `git rev-parse --abbrev-ref HEAD` returns
+# `HEAD` on detached-HEAD checkouts; treat that as "skip" since detached
+# HEAD has no feature-branch semantics.
+new_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [[ -z "$new_branch" || "$new_branch" == "HEAD" ]]; then
+    exit 0
+fi
+
+# Spec-kit feature branches are `<NNN>-<short-name>` where NNN is the
+# numeric feature prefix. Non-feature branches (main, develop, hotfix/*,
+# release/*, etc.) are skipped silently — see Principle VIII / FR-024:
+# the bridge surfaces meaningful events, not noise on every branch swap.
+if [[ ! "$new_branch" =~ ^([0-9]+)- ]]; then
+    exit 0
+fi
+feature_number="${BASH_REMATCH[1]}"
+
+# Fire-and-forget. `& disown` detaches the child so the git invocation
+# returns to the operator immediately; output is redirected to /dev/null
+# so the happy path is invisible (errors land in the reconciler's own
+# summary surface, not in stderr noise overlaying the checkout output).
+( "$RECONCILER" --spec "$feature_number" --quiet >/dev/null 2>&1 ) & disown
+
+exit 0

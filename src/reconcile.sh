@@ -104,6 +104,18 @@ readonly RECONCILE_MEMORY_END="<!-- speckit-linear:memory:end -->"
 # delimit a markdown code-span, not a bash subshell.
 readonly RECONCILE_SUBISSUE_HEADER='> **Read-only mirror of `tasks.md` — ticks in Linear are overwritten on next reconcile.**'
 
+# Deterministic color for auto-created `speckit-spec:NNN` workspace
+# labels (per contracts §2.2 — these labels are created lazily at
+# reconcile-time, not by seed). Neutral gray signals "system label,
+# not operator-curated"; matches the lazy-create entry in
+# contracts/linear-graphql-mutations.md §2.2.
+readonly RECONCILE_SPECKIT_LABEL_COLOR="#9CA3AF"
+
+# Module-level cache: label name → UUID. Populated lazily by
+# reconcile::_resolve_label_id so the same name resolved across N
+# specs in a single --all sweep hits Linear at most once.
+declare -gA _RECONCILE_LABEL_ID_CACHE=()
+
 # -----------------------------------------------------------------------------
 # CLI flags — populated by reconcile::parse_args.
 # -----------------------------------------------------------------------------
@@ -570,6 +582,199 @@ reconcile::subissue_state_key() {
 }
 
 # =============================================================================
+# Label name → UUID resolution (the labelIds binding).
+#
+# Linear's IssueCreateInput / IssueUpdateInput require `labelIds: [String!]`
+# (UUIDs). The MCP `save_issue` tool accepts `labels: [string]` (names
+# OR IDs) and resolves names server-side; the raw GraphQL path does
+# NOT. Every mutation site below funnels its label set through
+# reconcile::_resolve_label_ids_array so the wire shape is consistent.
+#
+# Auto-create policy (per contracts/linear-graphql-mutations.md §2.2):
+#   * `speckit-spec:NNN` — created lazily on first reconcile of a spec
+#     (`allow_create=1`). Color: RECONCILE_SPECKIT_LABEL_COLOR.
+#   * `phase:*` / `task-phase:*` — MUST already exist (seeded by
+#     `speckit.linear.seed`). Missing here is a hard error per FR-022
+#     ("unseeded halts"); reconciler aggregates the failure and points
+#     at the seed remediation.
+#   * Any other label (operator-added) — looked up but never created.
+# =============================================================================
+
+# reconcile::_label_create_speckit <name>
+#   Create a workspace-scoped (teamId omitted) issue label and echo its
+#   UUID. Used only for `speckit-spec:NNN` per the auto-create policy
+#   above. Returns non-zero (and records to summary) on transport or
+#   GraphQL failure.
+reconcile::_label_create_speckit() {
+    local name="$1"
+
+    if (( ARG_DRY_RUN == 1 )); then
+        reconcile::log "DRY-RUN issueLabelCreate name=${name} color=${RECONCILE_SPECKIT_LABEL_COLOR}"
+        summary::add created "issueLabelCreate ${name} (dry-run)"
+        # Synthesize a stable placeholder so downstream array-builds work
+        # in dry-run. Matches the dry-run pattern used by issueCreate.
+        printf 'dry-run-label-id-%s\n' "$name"
+        return 0
+    fi
+
+    local mutation='mutation CreateSpeckitLabel($input: IssueLabelCreateInput!) {
+        issueLabelCreate(input: $input) {
+            success
+            issueLabel { id name }
+        }
+    }'
+    # Workspace-scoped label: omit teamId entirely per contracts §2.2
+    # ("Workspace (omit `teamId`)").
+    local input_json vars
+    input_json="$(jq -nc \
+        --arg name "$name" \
+        --arg color "$RECONCILE_SPECKIT_LABEL_COLOR" \
+        '{name: $name, color: $color}')"
+    vars="$(jq -nc --argjson input "$input_json" '{input: $input}')"
+
+    local response
+    if ! response="$(graphql::mutate "$mutation" "$vars")"; then
+        summary::add error "issueLabelCreate ${name} failed (transport)"
+        reconcile::promote_exit 1
+        return 1
+    fi
+    if ! printf '%s' "$response" | jq -e '.data.issueLabelCreate.success == true' >/dev/null 2>&1; then
+        summary::add error "issueLabelCreate ${name} did not return success=true"
+        reconcile::promote_exit 1
+        return 1
+    fi
+    summary::add created "issueLabelCreate ${name}"
+    printf '%s' "$response" | jq -r '.data.issueLabelCreate.issueLabel.id'
+}
+
+# reconcile::_resolve_label_id <name> [allow_create]
+#   Resolve a label name to its UUID. <allow_create> is "1" to enable
+#   the speckit-spec auto-create path; any other value (default: "0")
+#   means "lookup only — missing is a hard error".
+#
+#   Echoes the UUID on stdout. Returns non-zero (and records the gap
+#   via summary::add) on missing+no-create or transport failure.
+#
+#   Cache: once resolved, the UUID is memoised in
+#   _RECONCILE_LABEL_ID_CACHE so an --all sweep hits Linear at most
+#   once per distinct label name.
+reconcile::_resolve_label_id() {
+    local name="$1"
+    local allow_create="${2:-0}"
+
+    if [[ -z "$name" ]]; then
+        summary::add error "reconcile::_resolve_label_id called with empty name"
+        return 1
+    fi
+
+    # Cache hit.
+    if [[ -n "${_RECONCILE_LABEL_ID_CACHE[$name]:-}" ]]; then
+        printf '%s\n' "${_RECONCILE_LABEL_ID_CACHE[$name]}"
+        return 0
+    fi
+
+    # Query Linear: issueLabels(filter: { name: { eq: $name } }).
+    # `first: 5` so we can spot duplicates and surface a warning
+    # without paginating; Linear caps name uniqueness per scope so
+    # >1 hit is rare but possible across team/workspace boundaries.
+    local query='query LocateLabel($name: String!) {
+        issueLabels(filter: { name: { eq: $name } }, first: 5) {
+            nodes { id name }
+        }
+    }'
+    local vars response
+    vars="$(jq -nc --arg name "$name" '{name: $name}')"
+
+    if ! response="$(graphql::query "$query" "$vars" 2>/dev/null)"; then
+        summary::add error "issueLabels lookup for '${name}' failed (transport)"
+        reconcile::promote_exit 1
+        return 1
+    fi
+
+    local id
+    id="$(printf '%s' "$response" | jq -r '.data.issueLabels.nodes[0].id // ""')"
+
+    if [[ -n "$id" ]]; then
+        local count
+        count="$(printf '%s' "$response" | jq '.data.issueLabels.nodes | length')"
+        if [[ "$count" =~ ^[0-9]+$ ]] && (( count > 1 )); then
+            summary::add warned "label '${name}' resolved to ${count} candidates; using first (${id})"
+        fi
+        _RECONCILE_LABEL_ID_CACHE[$name]="$id"
+        printf '%s\n' "$id"
+        return 0
+    fi
+
+    # Not found. Branch on whether the caller permits auto-create.
+    if [[ "$allow_create" == "1" ]]; then
+        if ! id="$(reconcile::_label_create_speckit "$name")"; then
+            return 1
+        fi
+        if [[ -z "$id" ]]; then
+            summary::add error "issueLabelCreate ${name} returned no id"
+            reconcile::promote_exit 1
+            return 1
+        fi
+        _RECONCILE_LABEL_ID_CACHE[$name]="$id"
+        printf '%s\n' "$id"
+        return 0
+    fi
+
+    # phase:* / task-phase:* (or any operator label) missing → FR-022
+    # halt-like surface. We don't exit(2) here because one missing
+    # label shouldn't kill the whole --all sweep; we record the gap,
+    # promote to exit 1, and the per-spec caller drops this label from
+    # its set so the mutation can still issue for the labels that DO
+    # resolve. The summary names the offending label and points at
+    # the seed remediation.
+    if [[ "$name" == phase:* || "$name" == task-phase:* ]]; then
+        summary::add error "label '${name}' not found in Linear; run \`speckit.linear.seed\` to create phase:* / task-phase:* labels"
+    else
+        summary::add error "label '${name}' not found in Linear; create it manually or remove it from the spec"
+    fi
+    reconcile::promote_exit 1
+    return 1
+}
+
+# reconcile::_resolve_label_ids_array <name1> [<name2> ...]
+#   Resolve each label name → UUID and echo a JSON array of UUIDs.
+#   `speckit-spec:*` names take the auto-create path; everything else
+#   is lookup-only. Names that fail to resolve are SKIPPED from the
+#   output (with a summary::add error already recorded by
+#   _resolve_label_id) so the caller's mutation still fires for the
+#   labels that DID resolve — partial progress beats whole-spec halt
+#   (FR-024).
+#
+#   Empty input → "[]".
+reconcile::_resolve_label_ids_array() {
+    local -a ids=()
+    local name id allow_create
+    for name in "$@"; do
+        [[ -n "$name" ]] || continue
+        if [[ "$name" == speckit-spec:* ]]; then
+            allow_create=1
+        else
+            allow_create=0
+        fi
+        if id="$(reconcile::_resolve_label_id "$name" "$allow_create")"; then
+            if [[ -n "$id" ]]; then
+                ids+=("$id")
+            fi
+        fi
+    done
+
+    if (( ${#ids[@]} == 0 )); then
+        printf '[]'
+        return 0
+    fi
+
+    # Hand off to jq for clean JSON-array encoding (handles the
+    # edge case where a UUID somehow contains a quote, which it
+    # never should, but keeps the boundary clean).
+    printf '%s\n' "${ids[@]}" | jq -Rcs 'split("\n") | map(select(length > 0))'
+}
+
+# =============================================================================
 # Mutation primitives — every Linear write the reconciler issues funnels
 # through one of these, so --dry-run can intercept them uniformly.
 #
@@ -970,19 +1175,15 @@ reconcile::sync_spec_issue() {
         description="$(reconcile::compose_issue_description \
             "$existing_body" "$memory_block")"
 
+        # Linear's IssueCreateInput requires `labelIds: [String!]`
+        # (UUIDs) — names are rejected on the raw GraphQL path. We
+        # resolve every label name to its UUID via
+        # reconcile::_resolve_label_ids_array. For speckit-spec:NNN
+        # this triggers a workspace-label create on first reconcile;
+        # for phase:* we hard-fail (FR-022) if seed hasn't run.
         local labels_json
-        labels_json="$(reconcile::json_array "$spec_label" "$phase_label")"
+        labels_json="$(reconcile::_resolve_label_ids_array "$spec_label" "$phase_label")"
 
-        # Note: Linear's IssueCreateInput uses `labelIds` (UUIDs) not
-        # `labels` (names). Per the runtime probe the MCP path accepts
-        # names; the raw GraphQL path requires IDs. Since the AI-agent
-        # harness pre-resolves these via MCP in normal flows, the
-        # GraphQL path here is the fallback used by git hooks where the
-        # label IDs have to be looked up first. We pass names in a
-        # custom `labels` field; if the operator's harness runs only
-        # GraphQL it will see a validation error and the summary will
-        # name the missing label resolver. T077 dogfood confirms which
-        # path the operator hits first.
         local input_json
         input_json="$(jq -nc \
             --arg title "$title" \
@@ -997,7 +1198,7 @@ reconcile::sync_spec_issue() {
                 projectId: $project,
                 stateId: $state,
                 description: $description,
-                labelNames: $labels
+                labelIds: $labels
             }')"
 
         local created_issue
@@ -1080,14 +1281,24 @@ reconcile::sync_spec_issue() {
         update_input="$(printf '%s' "$update_input" | jq -c \
             --arg state "$state_uuid" '. + {stateId: $state}')"
     fi
-    # Label diff (set semantics — sort both before comparing).
+    # Label diff (set semantics — sort both before comparing). The
+    # diff is computed on NAMES (operator-facing), but the wire
+    # mutation requires UUIDs (labelIds). We only re-resolve names
+    # when the diff fires so the no-op reconcile stays zero-RTT.
     local current_sorted desired_sorted
     current_sorted="$(printf '%s' "$current_labels" | jq -c 'sort')"
     desired_sorted="$(printf '%s' "$desired_labels_json" | jq -c 'sort')"
     if [[ "$current_sorted" != "$desired_sorted" ]]; then
+        local -a desired_names=()
+        local name
+        while IFS= read -r name; do
+            [[ -n "$name" ]] && desired_names+=("$name")
+        done < <(printf '%s' "$desired_labels_json" | jq -r '.[]')
+        local desired_ids_json
+        desired_ids_json="$(reconcile::_resolve_label_ids_array "${desired_names[@]}")"
         update_input="$(printf '%s' "$update_input" | jq -c \
-            --argjson labels "$desired_labels_json" \
-            '. + {labelNames: $labels}')"
+            --argjson labels "$desired_ids_json" \
+            '. + {labelIds: $labels}')"
     fi
 
     reconcile::mutate_issue_update "$issue_id" "$update_input" || return 1
@@ -1147,9 +1358,11 @@ reconcile::sync_task_phase_subissues() {
 
         local sub_issue_id=""
         if (( sub_count == 0 )); then
-            # Create.
+            # Create. task-phase:* is seed-owned — if it's missing,
+            # _resolve_label_ids_array surfaces an error and we skip
+            # this sub-issue (the labels_json comes back as `[]`).
             local labels_json
-            labels_json="$(reconcile::json_array "$phase_label")"
+            labels_json="$(reconcile::_resolve_label_ids_array "$phase_label")"
             local sub_input
             if [[ -n "$state_uuid" ]]; then
                 sub_input="$(jq -nc \
@@ -1167,7 +1380,7 @@ reconcile::sync_task_phase_subissues() {
                         parentId: $parent,
                         stateId: $state,
                         description: $description,
-                        labelNames: $labels
+                        labelIds: $labels
                     }')"
             else
                 sub_input="$(jq -nc \
@@ -1183,7 +1396,7 @@ reconcile::sync_task_phase_subissues() {
                         projectId: $project,
                         parentId: $parent,
                         description: $description,
-                        labelNames: $labels
+                        labelIds: $labels
                     }')"
             fi
             local created
@@ -1244,8 +1457,18 @@ reconcile::sync_task_phase_subissues() {
             cur_sorted="$(printf '%s' "$cur_labels" | jq -c 'sort')"
             desired_sorted="$(printf '%s' "$desired_labels" | jq -c 'sort')"
             if [[ "$cur_sorted" != "$desired_sorted" ]]; then
+                # Diff fired — translate names → labelIds. See the
+                # matching block in reconcile::sync_spec_issue for
+                # the rationale (zero-RTT no-op preserved).
+                local -a desired_sub_names=()
+                local sub_name
+                while IFS= read -r sub_name; do
+                    [[ -n "$sub_name" ]] && desired_sub_names+=("$sub_name")
+                done < <(printf '%s' "$desired_labels" | jq -r '.[]')
+                local desired_sub_ids_json
+                desired_sub_ids_json="$(reconcile::_resolve_label_ids_array "${desired_sub_names[@]}")"
                 sub_update="$(printf '%s' "$sub_update" | jq -c \
-                    --argjson l "$desired_labels" '. + {labelNames: $l}')"
+                    --argjson l "$desired_sub_ids_json" '. + {labelIds: $l}')"
             fi
 
             reconcile::mutate_issue_update "$sub_issue_id" "$sub_update" || continue
