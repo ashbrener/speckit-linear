@@ -69,7 +69,15 @@ source "${SCRIPT_DIR}/graphql.sh"
 readonly INSTALL_CONFIG_PATH=".specify/extensions/linear/linear-config.yml"
 readonly INSTALL_CONFIG_DIR=".specify/extensions/linear"
 readonly INSTALL_EXTENSIONS_YML=".specify/extensions.yml"
-readonly INSTALL_GIT_HOOKS_DIR=".git/hooks"
+# Resolved at runtime by install::check_repo_layout (FR-033). NOT a readonly
+# constant: hardcoding `.git/hooks` is wrong in a linked git worktree, where
+# `.git` is a FILE pointing at the real gitdir and hooks live in the common
+# dir (or wherever `core.hooksPath` points), never at `.git/hooks`. We resolve
+# the correct path portably with `git rev-parse --git-path hooks`, which is
+# correct for both normal checkouts and linked worktrees and honours
+# `core.hooksPath`. The default here is a safe placeholder for status messages
+# before resolution.
+INSTALL_GIT_HOOKS_DIR=".git/hooks"
 readonly INSTALL_GH_WORKFLOWS_DIR=".github/workflows"
 readonly INSTALL_GH_WORKFLOW_FILE=".github/workflows/spec-kit-linear-sync.yml"
 readonly INSTALL_MCP_JSON_PATH=".mcp.json"
@@ -612,6 +620,19 @@ install::check_repo_layout() {
         return 1
     fi
     install::_status_row "ok" "git working tree" "$(git rev-parse --show-toplevel)"
+
+    # Resolve the git hooks directory portably (FR-033). In a linked worktree
+    # `.git` is a file and hooks do NOT live at `.git/hooks`; `git rev-parse
+    # --git-path hooks` returns the correct directory for normal checkouts and
+    # worktrees alike, and honours `core.hooksPath`. Falls back to the literal
+    # default if rev-parse somehow fails (we're already inside a work tree here).
+    if ! INSTALL_GIT_HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null)" \
+        || [[ -z "$INSTALL_GIT_HOOKS_DIR" ]]; then
+        INSTALL_GIT_HOOKS_DIR=".git/hooks"
+    fi
+    # Worktrees may not have the hooks dir materialised yet; create it before
+    # the writability checks below so install can land hooks there.
+    mkdir -p "$INSTALL_GIT_HOOKS_DIR" 2>/dev/null || true
 
     if [[ ! -d ".specify" ]]; then
         install::_status_row "err" ".specify/" \
