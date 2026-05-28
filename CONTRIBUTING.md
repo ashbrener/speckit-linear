@@ -109,4 +109,3 @@ Before merging, a maintainer checks:
 - [ ] No new runtime dependency introduced (or a constitution amendment is attached).
 - [ ] Commit messages follow the conventions above; no AI-attribution trailers.
 - [ ] FR numbers referenced in the PR body actually exist in the current spec.
-<!-- ci-force-trigger 2026-05-28 -->

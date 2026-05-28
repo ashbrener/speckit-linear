@@ -306,7 +306,7 @@ One Linear Issue per spec. The central entity the bridge manipulates.
 | `labelIds[]` | UUID[] | bridge | always contains `phase:<current>` and `speckit-spec:NNN`; possibly other operator-added labels (preserved) |
 | `parentId` | UUID? | n/a | spec Issues have no parent |
 | `priority` | int? | n/a | not set by bridge |
-| `assigneeId` | UUID? | n/a | not set by bridge |
+| `assigneeId` | UUID? | bridge (create only) | set to `linear.operator.user_id` from config on every `issueCreate` (FR-034); NOT passed on `issueUpdate` so manual reassignment in Linear's UI persists. Absent config block → unassigned with one warning per reconcile run (graceful degradation). |
 | `createdAt` / `updatedAt` | DateTime | Linear | read for race-resolution (FR-004b) |
 
 **Memory block schema** (FR-004) — markdown fragment rendered into

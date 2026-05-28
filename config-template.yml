@@ -36,6 +36,16 @@ linear:
   project:
     id: "00000000-0000-0000-0000-000000000000"   # Required (FR-002) — UUID is authoritative
     name: "spec-kit-linear"        # informational (display only)
+  # Operator identity — resolved at install time via `viewer { id name email }`
+  # per FR-034. `user_id` is the lookup key (UUID); name/email are
+  # informational, surfaced in the install summary + the spec Issue
+  # memory block. assigneeId on issueCreate is read from user_id;
+  # issueUpdate never passes assigneeId so manual reassignment in
+  # Linear's UI persists across reconciles.
+  operator:
+    user_id: "00000000-0000-0000-0000-000000000000"   # UUID — required (FR-034)
+    name: "Ash Brener"                                 # informational
+    email: "ash@example.com"                           # informational
   # Workflow state UUIDs captured by the seed step (FR-021 + FR-032).
   # Keys are the canonical lifecycle-phase identifiers. Lookup is by
   # UUID, never by name — Linear UI renames are safe; deletion surfaces

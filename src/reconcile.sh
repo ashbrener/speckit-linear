@@ -116,6 +116,12 @@ readonly RECONCILE_SPECKIT_LABEL_COLOR="#9CA3AF"
 # specs in a single --all sweep hits Linear at most once.
 declare -gA _RECONCILE_LABEL_ID_CACHE=()
 
+# FR-034 graceful-degradation flag — set to 1 the first time
+# reconcile::_resolve_operator_assignee_id sees an empty
+# linear.operator.user_id so the missing-operator warning fires
+# exactly once per reconcile run rather than once per Issue created.
+declare -g _RECONCILE_OPERATOR_WARNED=0
+
 # -----------------------------------------------------------------------------
 # CLI flags — populated by reconcile::parse_args.
 # -----------------------------------------------------------------------------
@@ -775,6 +781,38 @@ reconcile::_resolve_label_ids_array() {
 }
 
 # =============================================================================
+# FR-034 — Operator assignee resolution.
+#
+# Echo the Linear operator UUID stored in linear.operator.user_id, or
+# the empty string if it's absent. On the first absent call per
+# reconcile run, append a single warning to the summary so the
+# operator knows their Issues will be created unassigned (graceful
+# degradation per FR-034). The warning never escalates to an error —
+# absence of operator identity is recoverable; the spec Issue will
+# still be created, just unassigned.
+#
+# Mirrors the cache-with-one-shot-warn pattern used by the label
+# resolver above (_RECONCILE_LABEL_ID_CACHE) and is read once per
+# issueCreate site by sync_spec_issue / sync_task_phase_subissues.
+# Never read by issueUpdate sites — single-write-on-create semantics
+# so an operator who manually reassigns an Issue in Linear keeps
+# that reassignment across reconciles.
+# =============================================================================
+reconcile::_resolve_operator_assignee_id() {
+    local user_id
+    user_id="$(config::get_operator_user_id)"
+    if [[ -z "$user_id" ]]; then
+        if (( _RECONCILE_OPERATOR_WARNED == 0 )); then
+            summary::add warned "operator user_id missing from config; Issues will be unassigned (FR-034 graceful degradation)"
+            _RECONCILE_OPERATOR_WARNED=1
+        fi
+        printf ''
+        return 0
+    fi
+    printf '%s' "$user_id"
+}
+
+# =============================================================================
 # Mutation primitives — every Linear write the reconciler issues funnels
 # through one of these, so --dry-run can intercept them uniformly.
 #
@@ -1184,22 +1222,50 @@ reconcile::sync_spec_issue() {
         local labels_json
         labels_json="$(reconcile::_resolve_label_ids_array "$spec_label" "$phase_label")"
 
+        # FR-034: stamp assigneeId on issueCreate so the operator owns
+        # newly-minted spec Issues. NEVER pass assigneeId on issueUpdate
+        # (single-write-on-create) so manual reassignment in Linear's
+        # UI persists across reconciles. Empty assignee_id ⇒ degrade
+        # gracefully and create unassigned (warn-once).
+        local assignee_id
+        assignee_id="$(reconcile::_resolve_operator_assignee_id)"
+
         local input_json
-        input_json="$(jq -nc \
-            --arg title "$title" \
-            --arg team "$team_uuid" \
-            --arg project "$project_uuid" \
-            --arg state "$state_uuid" \
-            --arg description "$description" \
-            --argjson labels "$labels_json" \
-            '{
-                title: $title,
-                teamId: $team,
-                projectId: $project,
-                stateId: $state,
-                description: $description,
-                labelIds: $labels
-            }')"
+        if [[ -n "$assignee_id" ]]; then
+            input_json="$(jq -nc \
+                --arg title "$title" \
+                --arg team "$team_uuid" \
+                --arg project "$project_uuid" \
+                --arg state "$state_uuid" \
+                --arg description "$description" \
+                --argjson labels "$labels_json" \
+                --arg assignee "$assignee_id" \
+                '{
+                    title: $title,
+                    teamId: $team,
+                    projectId: $project,
+                    stateId: $state,
+                    description: $description,
+                    labelIds: $labels,
+                    assigneeId: $assignee
+                }')"
+        else
+            input_json="$(jq -nc \
+                --arg title "$title" \
+                --arg team "$team_uuid" \
+                --arg project "$project_uuid" \
+                --arg state "$state_uuid" \
+                --arg description "$description" \
+                --argjson labels "$labels_json" \
+                '{
+                    title: $title,
+                    teamId: $team,
+                    projectId: $project,
+                    stateId: $state,
+                    description: $description,
+                    labelIds: $labels
+                }')"
+        fi
 
         local created_issue
         if ! created_issue="$(reconcile::mutate_issue_create "$input_json")"; then
@@ -1363,41 +1429,92 @@ reconcile::sync_task_phase_subissues() {
             # this sub-issue (the labels_json comes back as `[]`).
             local labels_json
             labels_json="$(reconcile::_resolve_label_ids_array "$phase_label")"
+
+            # FR-034: stamp assigneeId on issueCreate for the sub-issue
+            # too; sub-issues for task phases inherit the same operator
+            # assignee as the parent spec Issue. NEVER pass assigneeId
+            # on the issueUpdate branch below so manual reassignment in
+            # Linear's UI persists across reconciles.
+            local sub_assignee_id
+            sub_assignee_id="$(reconcile::_resolve_operator_assignee_id)"
+
             local sub_input
             if [[ -n "$state_uuid" ]]; then
-                sub_input="$(jq -nc \
-                    --arg title "$sub_title" \
-                    --arg team "$team_uuid" \
-                    --arg project "$project_uuid" \
-                    --arg parent "$spec_issue_id" \
-                    --arg state "$state_uuid" \
-                    --arg description "$checklist" \
-                    --argjson labels "$labels_json" \
-                    '{
-                        title: $title,
-                        teamId: $team,
-                        projectId: $project,
-                        parentId: $parent,
-                        stateId: $state,
-                        description: $description,
-                        labelIds: $labels
-                    }')"
+                if [[ -n "$sub_assignee_id" ]]; then
+                    sub_input="$(jq -nc \
+                        --arg title "$sub_title" \
+                        --arg team "$team_uuid" \
+                        --arg project "$project_uuid" \
+                        --arg parent "$spec_issue_id" \
+                        --arg state "$state_uuid" \
+                        --arg description "$checklist" \
+                        --argjson labels "$labels_json" \
+                        --arg assignee "$sub_assignee_id" \
+                        '{
+                            title: $title,
+                            teamId: $team,
+                            projectId: $project,
+                            parentId: $parent,
+                            stateId: $state,
+                            description: $description,
+                            labelIds: $labels,
+                            assigneeId: $assignee
+                        }')"
+                else
+                    sub_input="$(jq -nc \
+                        --arg title "$sub_title" \
+                        --arg team "$team_uuid" \
+                        --arg project "$project_uuid" \
+                        --arg parent "$spec_issue_id" \
+                        --arg state "$state_uuid" \
+                        --arg description "$checklist" \
+                        --argjson labels "$labels_json" \
+                        '{
+                            title: $title,
+                            teamId: $team,
+                            projectId: $project,
+                            parentId: $parent,
+                            stateId: $state,
+                            description: $description,
+                            labelIds: $labels
+                        }')"
+                fi
             else
-                sub_input="$(jq -nc \
-                    --arg title "$sub_title" \
-                    --arg team "$team_uuid" \
-                    --arg project "$project_uuid" \
-                    --arg parent "$spec_issue_id" \
-                    --arg description "$checklist" \
-                    --argjson labels "$labels_json" \
-                    '{
-                        title: $title,
-                        teamId: $team,
-                        projectId: $project,
-                        parentId: $parent,
-                        description: $description,
-                        labelIds: $labels
-                    }')"
+                if [[ -n "$sub_assignee_id" ]]; then
+                    sub_input="$(jq -nc \
+                        --arg title "$sub_title" \
+                        --arg team "$team_uuid" \
+                        --arg project "$project_uuid" \
+                        --arg parent "$spec_issue_id" \
+                        --arg description "$checklist" \
+                        --argjson labels "$labels_json" \
+                        --arg assignee "$sub_assignee_id" \
+                        '{
+                            title: $title,
+                            teamId: $team,
+                            projectId: $project,
+                            parentId: $parent,
+                            description: $description,
+                            labelIds: $labels,
+                            assigneeId: $assignee
+                        }')"
+                else
+                    sub_input="$(jq -nc \
+                        --arg title "$sub_title" \
+                        --arg team "$team_uuid" \
+                        --arg project "$project_uuid" \
+                        --arg parent "$spec_issue_id" \
+                        --arg description "$checklist" \
+                        --argjson labels "$labels_json" \
+                        '{
+                            title: $title,
+                            teamId: $team,
+                            projectId: $project,
+                            parentId: $parent,
+                            description: $description,
+                            labelIds: $labels
+                        }')"
+                fi
             fi
             local created
             if created="$(reconcile::mutate_issue_create "$sub_input")"; then

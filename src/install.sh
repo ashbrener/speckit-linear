@@ -56,6 +56,8 @@ EXTENSION_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/summary.sh"
 # shellcheck source=./git_helpers.sh disable=SC1091
 source "${SCRIPT_DIR}/git_helpers.sh"
+# shellcheck source=./graphql.sh disable=SC1091
+source "${SCRIPT_DIR}/graphql.sh"
 
 # -----------------------------------------------------------------------------
 # Module constants.
@@ -131,6 +133,15 @@ INSTALL_DOGFOOD_DETECTED=0
 # Aggregated has-error flag across the dependency report. Drives the
 # final exit code: any `✗` row → exit 2 per command-shapes.md §5.7.
 INSTALL_HAD_HARD_ERROR=0
+
+# Operator identity resolved by install::resolve_operator (FR-034). The
+# bridge captures the authenticating Linear user's identity at install
+# time via the `viewer { id name email }` query and writes it to
+# linear.operator.{user_id,name,email} so the reconciler can pass
+# `assigneeId` on every issueCreate mutation.
+INSTALL_OPERATOR_USER_ID=""
+INSTALL_OPERATOR_NAME=""
+INSTALL_OPERATOR_EMAIL=""
 
 # -----------------------------------------------------------------------------
 # install::_log_info / install::_log_warn / install::_log_error
@@ -799,12 +810,76 @@ install::resolve_project_uuid() {
     esac
 }
 
+# =============================================================================
+# FR-034 — Operator identity resolution.
+#
+# At `specify extension add linear` time, capture the authenticating
+# Linear user's identity via the GraphQL `viewer { id name email }`
+# query and stash the three fields on module globals so
+# install::write_config can interpolate them into the `operator:` block
+# of the per-repo linear-config.yml.
+#
+# This runs AFTER team/project resolution because the user UUID is a
+# dependency the reconciler reads at every issueCreate to populate
+# assigneeId per FR-034. Missing or invalid LINEAR_API_KEY at this
+# point is a hard error (exit 2) — operator identity is a dependency
+# the bridge touches per FR-018b, so silent skip is forbidden.
+#
+# Behaviour:
+#   * Always runs (no flag opt-out) in both interactive and
+#     --non-interactive modes — the query has no prompts.
+#   * On dogfood / dev mode where Linear is genuinely unreachable, the
+#     graphql:: layer's exit-2 / exit-3 surfaces actionable diagnostics
+#     and halts; the install fails loud rather than producing a
+#     half-populated config.
+# =============================================================================
+
+install::resolve_operator() {
+    local query='query Me { viewer { id name email } }'
+
+    # graphql::query halts the process (exit 2/3/4) on its own when the
+    # API key is missing or the request fails. The keys-at-edges
+    # boundary lives in graphql.sh; this caller just consumes the JSON.
+    local response viewer_json
+    if ! response="$(graphql::query "$query" '{}')"; then
+        install::_die 2 \
+            "LINEAR_API_KEY missing or invalid — operator identity required for FR-034 (viewer { id name email })
+hint: set LINEAR_API_KEY in .env or export it before re-running install"
+    fi
+
+    viewer_json="$(printf '%s' "$response" | jq -c '.data.viewer // null')"
+    if [[ -z "$viewer_json" || "$viewer_json" == "null" ]]; then
+        install::_die 2 \
+            "LINEAR_API_KEY missing or invalid — operator identity required for FR-034: viewer query returned no data"
+    fi
+
+    INSTALL_OPERATOR_USER_ID="$(printf '%s' "$viewer_json" | jq -r '.id // ""')"
+    INSTALL_OPERATOR_NAME="$(printf '%s' "$viewer_json"   | jq -r '.name // ""')"
+    INSTALL_OPERATOR_EMAIL="$(printf '%s' "$viewer_json"  | jq -r '.email // ""')"
+
+    if [[ -z "$INSTALL_OPERATOR_USER_ID" ]]; then
+        install::_die 2 \
+            "LINEAR_API_KEY missing or invalid — operator identity required for FR-034: viewer.id absent from response"
+    fi
+
+    # FR-018b summary row — short the UUID to 8 chars for readability.
+    local short_uuid="${INSTALL_OPERATOR_USER_ID:0:8}"
+    install::_log_info \
+        "Operator: ${INSTALL_OPERATOR_NAME:-<no name>} <${INSTALL_OPERATOR_EMAIL:-<no email>}> (${short_uuid}...)"
+    summary::add "updated" \
+        "operator resolved: ${INSTALL_OPERATOR_NAME:-<no name>} <${INSTALL_OPERATOR_EMAIL:-<no email>}> (${short_uuid}...)"
+}
+
 # install::write_config <team_uuid> <project_uuid>
 #
 # Copy `config-template.yml` into `.specify/extensions/linear/linear-config.yml`
 # (unless the file already exists with non-zero UUIDs) and substitute
 # the resolved Team + Project UUIDs in-place. The seed step later
-# fills `workflow_state_uuids`.
+# fills `workflow_state_uuids`. The operator identity (FR-034)
+# captured by install::resolve_operator is also substituted into the
+# `operator:` block on first-time writes; on re-installs the existing
+# operator block is preserved unless it still holds the zero
+# placeholder.
 #
 # Idempotency: re-running install against an already-populated config
 # preserves any existing Project UUID — we only rewrite the
@@ -826,6 +901,7 @@ install::write_config() {
             "linear.team.id" "$team_uuid"
         install::_substitute_uuid_placeholder "$INSTALL_CONFIG_PATH" \
             "linear.project.id" "$project_uuid"
+        install::_write_operator_block "$INSTALL_CONFIG_PATH"
         return 0
     fi
 
@@ -839,7 +915,92 @@ hint: re-run \`specify extension add linear\` (or pass --dev with a checkout of 
         "linear.team.id" "$team_uuid"
     install::_substitute_uuid_placeholder "$INSTALL_CONFIG_PATH" \
         "linear.project.id" "$project_uuid"
+    install::_write_operator_block "$INSTALL_CONFIG_PATH"
     install::_log_info "wrote ${INSTALL_CONFIG_PATH}"
+}
+
+# install::_write_operator_block <file>
+#
+# Substitute the three operator-identity fields (user_id, name, email)
+# captured by install::resolve_operator into the `operator:` block of
+# the linear-config.yml at <file>. Per FR-034 we only overwrite the
+# placeholder values that the template ships with — a re-install must
+# never silently mutate an operator-edited config.
+#
+# The function is a no-op when INSTALL_OPERATOR_USER_ID is empty (the
+# resolver was skipped or returned no data) — in that case
+# config::get_operator_user_id will later report absence and the
+# reconciler will degrade gracefully per FR-034.
+install::_write_operator_block() {
+    local file="$1"
+
+    if [[ -z "$INSTALL_OPERATOR_USER_ID" ]]; then
+        return 0
+    fi
+
+    install::_substitute_operator_field "$file" "user_id" \
+        "\"${INSTALL_OPERATOR_USER_ID}\"" \
+        '"00000000-0000-0000-0000-000000000000"'
+    install::_substitute_operator_field "$file" "name" \
+        "\"${INSTALL_OPERATOR_NAME}\"" \
+        '"Ash Brener"'
+    install::_substitute_operator_field "$file" "email" \
+        "\"${INSTALL_OPERATOR_EMAIL}\"" \
+        '"ash@example.com"'
+}
+
+# install::_substitute_operator_field <file> <field> <new_quoted> <placeholder_quoted>
+#
+# Replace the first occurrence of `<field>: <placeholder_quoted>` inside
+# the `operator:` block with `<field>: <new_quoted>`. Idempotent — once
+# the placeholder is gone, the function is a no-op so re-running install
+# against an operator-edited config preserves the operator's values.
+install::_substitute_operator_field() {
+    local file="$1"
+    local field="$2"
+    local new_quoted="$3"
+    local placeholder_quoted="$4"
+
+    if [[ ! -f "$file" ]]; then
+        return 0
+    fi
+
+    local tmp
+    tmp="$(mktemp -t spec-kit-linear-config.XXXXXX)"
+    awk -v field="$field" \
+        -v placeholder="$placeholder_quoted" \
+        -v replacement="$new_quoted" '
+        BEGIN { in_block = 0; replaced = 0 }
+        {
+            ltrim = $0
+            sub(/^[[:space:]]+/, "", ltrim)
+            if (ltrim == "operator:") {
+                in_block = 1
+                print
+                next
+            }
+            # Sibling block opener at the same indent level closes the
+            # operator: scope. Heuristic: a key line at the two-space
+            # indent (the indent of operator: itself) that is not a
+            # nested child.
+            if (in_block && $0 ~ /^  [a-zA-Z_].*:[[:space:]]*$/) {
+                in_block = 0
+            }
+            if (in_block && replaced == 0) {
+                # Anchor on "    <field>:" so unrelated keys with
+                # similar names dont match.
+                pattern = "^[[:space:]]+" field ":[[:space:]]*" placeholder
+                if (match($0, pattern)) {
+                    # Replace just the placeholder; leave indent +
+                    # trailing comment intact.
+                    sub(placeholder, replacement)
+                    replaced = 1
+                }
+            }
+            print
+        }
+    ' "$file" >"$tmp"
+    mv "$tmp" "$file"
 }
 
 # install::_substitute_uuid_placeholder <file> <key> <uuid>
@@ -1310,6 +1471,14 @@ install::main() {
     local team_uuid project_uuid
     team_uuid="$(install::resolve_team_uuid)"
     project_uuid="$(install::resolve_project_uuid)"
+
+    # ---- Step 2b: resolve operator identity (FR-034) -----------------------
+    # Capture `viewer { id name email }` so the reconciler can pass
+    # assigneeId on every issueCreate. Runs AFTER team/project so any
+    # team/project failure short-circuits before we hit the network for
+    # the viewer query; runs BEFORE write_config so the operator block
+    # is populated in the same single write of linear-config.yml.
+    install::resolve_operator
 
     install::write_config "$team_uuid" "$project_uuid"
     summary::add "created" "linear-config.yml at ${INSTALL_CONFIG_PATH}"

@@ -96,6 +96,29 @@
             }
           }
         },
+        "operator": {
+          "type": "object",
+          "description": "Operator identity, resolved at install time via the GraphQL `viewer { id name email }` query (FR-034). user_id is the lookup key; name/email are informational. The reconciler passes user_id as assigneeId on every issueCreate mutation (spec Issues and task-phase sub-issues); issueUpdate never passes assigneeId so manual reassignment in Linear's UI persists across reconciles. Absent operator block → reconciler warns and creates Issues unassigned (graceful degradation per FR-034).",
+          "additionalProperties": false,
+          "required": ["user_id"],
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "description": "Operator's Linear user UUID. Resolved at install time; used as assigneeId on every issueCreate.",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "name": {
+              "type": "string",
+              "description": "Operator display name. Informational; surfaced in install summary + spec Issue memory block.",
+              "minLength": 1
+            },
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Operator email. Informational; surfaced in install summary + spec Issue memory block."
+            }
+          }
+        },
         "workflow_state_uuids": {
           "type": "object",
           "description": "Map of lifecycle-phase key to Linear workflow-state UUID, captured by speckit.linear.seed at workspace-seed time (FR-021, FR-032). All nine keys MUST be present and well-formed UUIDs. Lookup is by UUID, never by name — Linear UI renames are safe; deletion of a referenced state surfaces as an explicit error at reconcile time.",

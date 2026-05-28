@@ -300,6 +300,35 @@ config::get_project_id() {
     printf '%s\n' "${value}"
 }
 
+# config::get_operator_user_id
+# Echo the Linear operator user UUID captured at install time via the
+# `viewer` query (FR-034). Empty (no halt) if absent — the reconciler
+# treats absence as a warning and creates Issues unassigned per the
+# graceful-degradation clause of FR-034. NOT added to config::validate's
+# required-fields list for the same reason.
+config::get_operator_user_id() {
+    config::_require_loaded
+    printf '%s\n' "${CONFIG_VALUES[linear.operator.user_id]:-}"
+}
+
+# config::get_operator_name
+# Echo the Linear operator's display name (informational; populated by
+# the install step's `viewer { name }` capture per FR-034). Empty if
+# absent.
+config::get_operator_name() {
+    config::_require_loaded
+    printf '%s\n' "${CONFIG_VALUES[linear.operator.name]:-}"
+}
+
+# config::get_operator_email
+# Echo the Linear operator's email (informational; populated by the
+# install step's `viewer { email }` capture per FR-034). Empty if
+# absent.
+config::get_operator_email() {
+    config::_require_loaded
+    printf '%s\n' "${CONFIG_VALUES[linear.operator.email]:-}"
+}
+
 # config::get_workflow_state_uuid <lifecycle_phase>
 # Echo the workflow-state UUID for one of the nine lifecycle phases
 # (specifying|clarifying|planning|tasking|red_team|implementing|

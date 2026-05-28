@@ -49,7 +49,11 @@ Full task-by-task breakdown: [`specs/001-spec-kit-linear-bridge/tasks.md`](./spe
 
 ## Data model
 
-Spec-kit's artifacts map to Linear primitives like this (locked in spec.md §Overview):
+Spec-kit's artifacts map to Linear primitives. Two views below — first the shape of each side, then the arrows that cross between them — followed by the canonical table.
+
+### Structural hierarchy
+
+Pure containment on each side. Disk on the left, Linear on the right. No arrows cross between them yet — that's the next diagram.
 
 ```mermaid
 graph LR
@@ -59,44 +63,48 @@ graph LR
         SpecMd["📝 spec.md"]
         PlanMd["📐 plan.md"]
         TasksMd["✅ tasks.md"]
-        PhaseN["## Phase N: blocks"]
-        Clarify["## Clarifications<br/>(session blocks)"]
-        Phase["🔄 Lifecycle phase<br/>(computed from files)"]
-
         Repo --> SpecDir
         SpecDir --> SpecMd
         SpecDir --> PlanMd
         SpecDir --> TasksMd
-        TasksMd --> PhaseN
-        SpecMd --> Clarify
-        SpecDir --> Phase
     end
 
     subgraph LN["Linear workspace"]
+        Workspace["🏢 Workspace"]
         Team["👥 Team"]
-        subgraph Proj["📦 Project (one per repo)"]
-            Issue["📋 Spec Issue<br/>workflow state + labels"]
-            SubIssue["🧩 Sub-issue<br/>(one per task phase)"]
-            Checklist["☑ Checklist items<br/>(read-only mirror)"]
-            Comments["💬 Comments<br/>(on spec Issue)"]
-            Labels["🏷 speckit-spec:NNN<br/>phase:*<br/>task-phase:N"]
-        end
-        Team --> Proj
+        Project["📦 Project<br/>(one per repo)"]
+        Issue["📋 Spec Issue<br/>(one per spec)"]
+        SubIssue["🧩 Sub-issues<br/>(one per task phase)"]
+        Workspace --> Team
+        Team --> Project
+        Project --> Issue
         Issue --> SubIssue
-        SubIssue --> Checklist
-        Issue --> Comments
-        Issue -.- Labels
-        SubIssue -.- Labels
     end
+```
 
-    Repo -- "becomes" --> Proj
-    SpecDir -- "becomes" --> Issue
-    SpecMd -- "title + memory block" --> Issue
-    PlanMd -- "posts as" --> Comments
-    PhaseN -- "becomes" --> SubIssue
-    TasksMd -- "mirrors to" --> Checklist
-    Clarify -- "posts as" --> Comments
-    Phase -- "drives state + label" --> Issue
+### What maps to what
+
+The arrows that turn disk artifacts into Linear content. Short edge labels — each arrow is one sentence.
+
+```mermaid
+graph LR
+    SpecMd["📝 spec.md"]
+    PhaseN["✅ tasks.md<br/>## Phase N: block"]
+    Tasks["tasks under a phase"]
+    Clarify["💭 ### Session blocks<br/>in spec.md"]
+    Phase["🔄 Lifecycle phase"]
+
+    IssueDesc["📋 Spec Issue<br/>description"]
+    SubIssue["🧩 Task-phase<br/>sub-issue"]
+    Checklist["☑ Checklist items<br/>in sub-issue"]
+    Comments["💬 Comments<br/>on spec Issue"]
+    IssueState["🏷 Issue state<br/>+ phase:* label"]
+
+    SpecMd -- "renders as" --> IssueDesc
+    PhaseN -- "becomes a" --> SubIssue
+    Tasks -- "mirrored as" --> Checklist
+    Clarify -- "posted as" --> Comments
+    Phase -- "drives" --> IssueState
 ```
 
 | Filesystem concept | Linear primitive |

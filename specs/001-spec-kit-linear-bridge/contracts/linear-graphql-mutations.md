@@ -257,6 +257,9 @@ save_issue(
   state:       string,        # workflow-state UUID from linear.workflow_state_uuids
   labels:      string[],      # ["phase:<current>", "speckit-spec:NNN"]
   parentId:    string?        # null for spec Issues (sub-issues use this)
+  assigneeId:  string?        # set to `linear.operator.user_id` from config per
+                              # FR-034; omitted on `issueUpdate` for
+                              # manual-reassign-persistence
 ) -> Issue { id, identifier, title, state { id }, labels { nodes { name } } }
 ```
 
@@ -277,6 +280,14 @@ mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
   }
 }
 ```
+
+`IssueCreateInput` includes `assigneeId: String?` per FR-034 — the
+bridge reads `linear.operator.user_id` from config and passes it on
+every `issueCreate`. `IssueUpdateInput` MUST NOT carry `assigneeId`
+(single-write-on-create semantics so manual reassignment in Linear's
+UI persists across reconciles); absence of `linear.operator.user_id`
+in config degrades gracefully — Issues are created unassigned and a
+one-shot warning lands in the reconcile summary.
 
 The bridge picks `issueCreate` vs `issueUpdate` based on the
 identity lookup in §4.1.1.
@@ -372,7 +383,11 @@ contains the read-only checklist mirror of that phase's tasks
 **When called**: Every reconcile, for every task-phase declared in
 `tasks.md`, for every spec the worktree authorises (FR-025).
 
-**MCP signature**: same `save_issue` tool, with `parentId` set.
+**MCP signature**: same `save_issue` tool, with `parentId` set. Per
+FR-034, `assigneeId` is set to `linear.operator.user_id` from config
+on `issueCreate` so task-phase sub-issues inherit the same operator
+assignee as their parent spec Issue; `assigneeId` is omitted on
+`issueUpdate` for manual-reassign-persistence.
 
 **4.3.1 Identity lookup**:
 

@@ -55,6 +55,10 @@ requirement below.
 - Q: When the GitHub Action fires and needs to flip the spec Issue's workflow state, does it look up the state by NAME (e.g. `"Ready-to-merge"`, `"Merged"`) or by UUID? → A: UUID-based binding, mirroring the Project and Team UUID pattern. The seed step (FR-021) creates the workflow states, captures their UUIDs at creation time, and writes them to `.specify/extensions/linear/config.yml` under a `workflow_state_uuids` map (keyed by lifecycle-phase name). The Action reads UUIDs from config and queries Linear by UUID. Name changes in Linear's UI don't break the lookup; only state deletion does, which surfaces as an explicit error.
 - Q: Should the bridge also fire on local git operations (branch checkout, commit, local merge) so Linear's branch/worktree/current-task memory block stays current even when the operator hasn't run a spec-kit command? → A: Yes. The bridge auto-installs local git hooks (`post-checkout`, `post-commit`, `post-merge`) at `specify extension add linear` time per FR-033. These hooks invoke the same reconciler as spec-kit's `after_*` hooks. Crons, daemons, filesystem watchers, and other long-running or scheduled triggers remain explicitly out of scope.
 
+### Session 2026-05-28
+
+- Q: Should Linear Issues + sub-issues the bridge creates be assigned to a specific Linear user? → A: Yes — assigned to the operator (the Linear user whose API key / OAuth token authenticates the install) on creation, captured via `viewer { id name email }` GraphQL query at install time and persisted to `linear.operator.user_id` in `linear-config.yml`. Sub-issues for task phases inherit the same assignee. `issueUpdate` calls do NOT pass `assigneeId`, so manual reassignment in Linear's UI persists across reconciles. FR-034 codifies this.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Filesystem-to-Linear reconciliation (Priority: P1)
@@ -469,6 +473,25 @@ intermediate phase transitions appearing in Linear's activity log.
   branch/worktree pointers from the memory block) to the operator
   so the operator can answer "what's done?" from any worktree
   without mutating state.
+
+#### Operator identity
+
+- **FR-034**: The bridge MUST capture the operator's Linear user
+  identity (`user_id`, `name`, `email`) at `specify extension add
+  linear` time via the GraphQL `viewer` query, and persist it to
+  `.specify/extensions/linear/linear-config.yml` under
+  `linear.operator.user_id` (UUID, the lookup key) plus
+  `linear.operator.name` and `linear.operator.email` (informational,
+  for the install-time summary and for the memory block). The
+  reconciler MUST pass this `user_id` as `assigneeId` on every
+  `issueCreate` mutation it issues (both the spec Issue and the
+  task-phase sub-issues), but MUST NOT pass `assigneeId` on
+  `issueUpdate` mutations — single-write-on-create semantics so an
+  operator who manually reassigns an Issue in Linear keeps that
+  reassignment across reconciles. If `linear.operator.user_id` is
+  absent from the config (older configs, manually-edited config),
+  the reconciler MUST surface a warning and create Issues
+  unassigned rather than fail (graceful degradation).
 
 #### Setup, auth, and multi-workspace
 
