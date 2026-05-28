@@ -180,7 +180,19 @@ declare -g ARG_SPEC=""          # NNN or empty
 declare -g ARG_ALL=0            # 0|1
 declare -g ARG_DRY_RUN=0        # 0|1
 declare -g ARG_QUIET=0          # 0|1
-declare -g ARG_RETROACTIVE=0    # 0|1 — extra-quiet, suppresses non-authoritative warnings
+declare -g ARG_RETROACTIVE=0    # 0|1 — first-time-adoption mode: bypasses the
+                                #       FR-025 write-authority gate so writes
+                                #       proceed for every enumerated spec
+                                #       regardless of the worktree's current
+                                #       branch. Also suppresses the per-spec
+                                #       "non-authoritative" skip warning.
+
+# FR-014 retroactive bypass accumulator. Incremented once per spec whose
+# FR-025 authority gate was bypassed because --retroactive was set;
+# surfaced as a single aggregate INFO row in summary::emit so the
+# operator sees, after the fact, that the write path fired for specs
+# that wouldn't normally be writable from this worktree. Zero ⇒ no row.
+declare -g _RECONCILE_RETROACTIVE_BYPASS_COUNT=0
 
 # Aggregate exit-code tracker. We start at 0 and monotonically promote
 # to higher severities as failures accumulate.
@@ -202,9 +214,14 @@ Options:
   --all            Reconcile every specs/NNN-feature/ in the repo.
                    (Exactly one of --spec or --all is required.)
   --dry-run        Log every mutation that WOULD fire; issue none.
-  --retroactive    First-time-adoption mode. Suppresses "skipped because
-                   non-authoritative" warnings. Implies --all if --spec
-                   is not given.
+  --retroactive    First-time-adoption mode (FR-014). BYPASSES the FR-025
+                   write-authority gate so every enumerated spec is
+                   reconciled regardless of the worktree's current branch.
+                   Intended for the first reconcile after installing the
+                   bridge into a repo with existing specs — drop the flag
+                   for subsequent runs and rely on per-branch reconciles.
+                   Also suppresses the per-spec "non-authoritative" skip
+                   warning. Implies --all if --spec is not given.
   --quiet          Suppress per-mutation log lines. Summary still emits.
   --config PATH    Override the path to linear-config.yml
                    (default: .specify/extensions/linear/linear-config.yml).
@@ -2426,9 +2443,29 @@ reconcile::process_spec() {
     local feature_branch="${feature_number}-${short_name}"
 
     # --- 4a. Write-authority gate (FR-025 / Principle IV) -------------
+    # The gate's default behaviour: non-authoritative worktrees enter
+    # read-only display per FR-026 and return without writing. The
+    # --retroactive flag (FR-014) is the documented operator-facing
+    # escape hatch — it bypasses the gate so a first-reconcile-after-
+    # install converges every spec to its current state without
+    # requiring per-branch checkouts (the FR-014 contract).
+    #
+    # When the bypass fires we still record the fact so it surfaces in
+    # the summary block as a single aggregate INFO row after the loop,
+    # rather than once per spec — the bypass is the same decision for
+    # every spec touched, so logging it N times would clutter the
+    # summary without adding signal.
     if ! git_helpers::is_authoritative_for_spec "$feature_number"; then
-        reconcile::read_only_display "$feature_number" "$spec_dir"
-        return 0
+        if (( ARG_RETROACTIVE == 1 )); then
+            local current_branch
+            current_branch="$(git_helpers::current_branch 2>/dev/null || true)"
+            reconcile::log "spec ${feature_number}: --retroactive bypassing FR-025 authority gate (current branch '${current_branch:-detached}'; would normally be read-only)"
+            _RECONCILE_RETROACTIVE_BYPASS_COUNT=$(( _RECONCILE_RETROACTIVE_BYPASS_COUNT + 1 ))
+            # Fall through to the write path below.
+        else
+            reconcile::read_only_display "$feature_number" "$spec_dir"
+            return 0
+        fi
     fi
 
     # --- 4b. Phase inference ------------------------------------------
@@ -2796,6 +2833,20 @@ reconcile::main() {
     # state. Failure here is best-effort; aggregated as warning rather
     # than blocking the per-spec writes.
     reconcile::sync_project_status || true
+
+    # FR-014 retroactive-bypass aggregate INFO row. When --retroactive
+    # caused one or more specs to be reconciled despite a non-
+    # authoritative worktree, surface a single summary entry naming
+    # the count and the current branch so the operator has a clear
+    # audit breadcrumb that the FR-025 gate was deliberately bypassed
+    # (and how often). Recorded via summary::add warned so it appears
+    # in the warnings block — the bypass is a notable, operator-facing
+    # event, not an error.
+    if (( _RECONCILE_RETROACTIVE_BYPASS_COUNT > 0 )); then
+        local _retro_branch
+        _retro_branch="$(git_helpers::current_branch 2>/dev/null || true)"
+        summary::add warned "retroactive: ${_RECONCILE_RETROACTIVE_BYPASS_COUNT} spec(s) reconciled despite non-authoritative worktree (current branch '${_retro_branch:-detached}'); FR-025 gate bypassed per FR-014 first-time-adoption contract"
+    fi
 
     # Step 5 — summary emission (Principle VIII).
     summary::emit

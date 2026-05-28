@@ -448,6 +448,16 @@ intermediate phase transitions appearing in Linear's activity log.
   result from running every hook in sequence — without producing any
   intermediate phase artifacts (no spurious comments, no transitional
   status flips visible in Linear's activity log).
+  - The operator-facing flag that delivers this contract is
+    `--retroactive` (on `/speckit.linear.push` and `bash
+    src/reconcile.sh`). It bypasses the FR-025 write-authority gate
+    so every enumerated spec is reconciled regardless of the
+    worktree's current branch — a first reconcile after installing
+    the bridge into a repo with existing specs converges every spec
+    to its current state without per-branch checkouts. The bypass
+    surfaces as a single aggregate INFO row in the summary block so
+    the operator has an audit breadcrumb that the gate was
+    deliberately bypassed (and how often).
 - **FR-015**: For every `### Session YYYY-MM-DD` subheading the
   bridge finds under the `## Clarifications` section of `spec.md`,
   it MUST post (exactly once, idempotently) a comment on the spec
