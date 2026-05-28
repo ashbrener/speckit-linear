@@ -93,6 +93,21 @@ source "${SCRIPT_DIR}/parser.sh"
 # every consumer repo's invocation.
 readonly RECONCILE_CONFIG_PATH_DEFAULT=".specify/extensions/linear/linear-config.yml"
 
+# The fenced markers around the human-readable Overview block in spec
+# Issue descriptions. This block is sourced from spec.md's `## Overview`
+# section verbatim (truncated to the first paragraph when long) so a
+# developer scanning the Linear Issue sees what the spec actually does
+# without opening spec.md on GitHub. Owned by the bridge — everything
+# between BEGIN and END is rewritten on every reconcile.
+readonly RECONCILE_OVERVIEW_BEGIN="<!-- spec-kit-linear:overview:begin -->"
+readonly RECONCILE_OVERVIEW_END="<!-- spec-kit-linear:overview:end -->"
+
+# Cap on the verbatim Overview body before we truncate to the first
+# paragraph (split on `\n\n`) + ellipsis. Linear descriptions are
+# already long with the memory + diagrams blocks; keeping this under
+# 1500 chars preserves the at-a-glance value the block is meant to add.
+readonly RECONCILE_OVERVIEW_MAX_CHARS=1500
+
 # The fenced markers around the memory block in spec Issue descriptions
 # (FR-004). Bridge rewrites everything between BEGIN and END on every
 # reconcile; operator-added prose ABOVE or BELOW the fences survives.
@@ -136,6 +151,13 @@ declare -g _RECONCILE_OPERATOR_WARNED=0
 # base URL so the warning fires once per reconcile rather than once
 # per spec.
 declare -g _RECONCILE_DIAGRAMS_WARNED=0
+
+# Overview-block "spec.md has no ## Overview section" warning latch —
+# same one-shot pattern as the operator-assignee / diagrams warnings
+# above. Flipped on the first render_overview_block call whose spec.md
+# lacks an `## Overview` heading so the warning fires once per
+# reconcile rather than once per spec.
+declare -g _RECONCILE_OVERVIEW_WARNED=0
 
 # FR-002 Project Status accumulator. Each per-spec process_spec call
 # appends one row (newline-separated): `<lifecycle_phase>\t<last_touched_epoch>`.
@@ -517,6 +539,177 @@ EOF
 }
 
 # =============================================================================
+# reconcile::_extract_overview <spec_md_path>
+#
+# Echo the body of spec.md's `## Overview` (or `# Overview` if H1)
+# section to stdout, with leading and trailing blank lines trimmed.
+# Returns empty output if no Overview section exists or the file is
+# missing — graceful degradation so a spec.md without an Overview
+# heading is a no-op (the caller skips emitting the block entirely).
+#
+# Section boundaries: the body starts on the line AFTER the heading
+# and ends just before the next heading at the same or shallower depth
+# (H2 Overview → next H1/H2; H1 Overview → next H1). Subsections (H3+)
+# nested inside Overview are preserved verbatim.
+# =============================================================================
+reconcile::_extract_overview() {
+    local spec_md="$1"
+    [[ -f "$spec_md" ]] || return 0
+
+    awk '
+        BEGIN { in_section = 0; depth = 0 }
+        # Heading detector: depth = number of leading `#` chars.
+        /^#+[[:space:]]+/ {
+            n = 0
+            line = $0
+            while (substr(line, n + 1, 1) == "#") { n++ }
+            # Trim leading hashes + whitespace to compare title text.
+            title = substr(line, n + 1)
+            sub(/^[[:space:]]+/, "", title)
+            sub(/[[:space:]]+$/, "", title)
+
+            if (in_section == 0) {
+                # Look for the Overview heading at any depth (H1 or H2).
+                if ((n == 1 || n == 2) && title == "Overview") {
+                    in_section = 1
+                    depth = n
+                    next
+                }
+            } else {
+                # Terminate on next heading at same-or-shallower depth.
+                if (n <= depth) {
+                    exit
+                }
+            }
+        }
+        in_section { print }
+    ' "$spec_md" | awk '
+        # Trim leading blank lines.
+        BEGIN { started = 0 }
+        {
+            if (started == 0 && $0 ~ /^[[:space:]]*$/) { next }
+            started = 1
+            buf[NR] = $0
+            last = NR
+        }
+        END {
+            # Trim trailing blank lines.
+            while (last > 0 && buf[last] ~ /^[[:space:]]*$/) { last-- }
+            for (i = 1; i <= last; i++) {
+                if (i in buf) { print buf[i] }
+            }
+        }
+    '
+}
+
+# =============================================================================
+# reconcile::_github_base_url
+#
+# Echo the consumer repo's https://github.com/<owner>/<repo> URL on
+# stdout, or empty when `git remote get-url origin` isn't a GitHub URL.
+# Mirrors the SSH-→-HTTPS rewrite logic already used by
+# reconcile::render_diagrams_block and reconcile::render_memory_block.
+# Kept private (underscore prefix) so callers go through the public
+# render_* functions.
+# =============================================================================
+reconcile::_github_base_url() {
+    local remote_url="" base_url=""
+    if remote_url="$(git remote get-url origin 2>/dev/null)"; then
+        if [[ "$remote_url" =~ ^git@([^:]+):(.+)\.git$ ]]; then
+            base_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        elif [[ "$remote_url" =~ ^ssh://git@([^/]+)/(.+)\.git$ ]]; then
+            base_url="https://${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        elif [[ "$remote_url" =~ ^https?://(.+)\.git$ ]]; then
+            base_url="https://${BASH_REMATCH[1]}"
+        elif [[ "$remote_url" =~ ^https?://github\.com/.+ ]]; then
+            # Already an https URL without the trailing .git.
+            base_url="$remote_url"
+        fi
+    fi
+    if [[ -n "$base_url" && "$base_url" == *github.com* ]]; then
+        printf '%s' "$base_url"
+    fi
+}
+
+# =============================================================================
+# reconcile::render_overview_block <spec_dir>
+#
+# Build the markdown body for the spec Issue's `## What this spec does`
+# block (Fix 7 — the human-readable Overview pointer). Sourced verbatim
+# from spec.md's `## Overview` section so a developer scanning the
+# Linear Issue sees what the spec actually does without opening
+# spec.md on GitHub. The returned content does NOT include the
+# begin/end fences; the caller (compose_issue_description) wraps it.
+#
+# Length handling: if the extracted Overview exceeds
+# RECONCILE_OVERVIEW_MAX_CHARS (1500), truncate to the FIRST paragraph
+# (split on `\n\n`), append an ellipsis, and the "Read full spec on
+# GitHub →" link as usual. Under cap → emit verbatim. The link line
+# ALWAYS appears.
+#
+# Empty Overview (spec.md has no `## Overview` heading) → echo nothing
+# (caller skips the block) and surface a one-shot warned summary line
+# per reconcile run so the operator knows why the block is missing.
+# =============================================================================
+reconcile::render_overview_block() {
+    local spec_dir="$1"
+    local spec_md="${spec_dir%/}/spec.md"
+
+    local overview_body
+    overview_body="$(reconcile::_extract_overview "$spec_md")"
+
+    if [[ -z "$overview_body" ]]; then
+        if (( _RECONCILE_OVERVIEW_WARNED == 0 )); then
+            summary::add warned "overview block skipped: spec.md has no \`## Overview\` section (one or more specs)"
+            _RECONCILE_OVERVIEW_WARNED=1
+        fi
+        return 0
+    fi
+
+    # Truncate to first paragraph + ellipsis when over cap. The cap is
+    # measured against the raw (untruncated) body's char count; the
+    # truncated form re-uses the FIRST `\n\n`-delimited paragraph.
+    local body_chars=${#overview_body}
+    if (( body_chars > RECONCILE_OVERVIEW_MAX_CHARS )); then
+        # Use awk to grab everything up to (but not including) the
+        # first fully-blank line. Append a single ellipsis line so the
+        # reader knows there's more.
+        local first_para
+        first_para="$(printf '%s\n' "$overview_body" | awk '
+            /^[[:space:]]*$/ { exit }
+            { print }
+        ')"
+        overview_body="${first_para}"$'\n\n…'
+    fi
+
+    # Build the "Read full spec on GitHub →" link. The base URL +
+    # current branch + spec.md path resolves to a blob URL the reader
+    # can click straight into. When the remote isn't GitHub-shaped the
+    # link line falls back to a code-span pointer to the on-disk path
+    # so the block remains useful (it's the Overview body, not the
+    # link, that's load-bearing).
+    local base_url current_branch link_line
+    base_url="$(reconcile::_github_base_url)"
+    current_branch="$(git_helpers::current_branch 2>/dev/null || true)"
+
+    if [[ -n "$base_url" && -n "$current_branch" ]]; then
+        link_line="[Read full spec on GitHub →](${base_url}/blob/${current_branch}/${spec_md})"
+    elif [[ -n "$base_url" ]]; then
+        link_line="[Read full spec on GitHub →](${base_url}/blob/HEAD/${spec_md})"
+    else
+        link_line="\`(local: ${spec_md})\`"
+    fi
+
+    cat <<EOF
+## What this spec does
+
+${overview_body}
+
+${link_line}
+EOF
+}
+
+# =============================================================================
 # reconcile::render_diagrams_block
 #
 # Build the markdown body for the spec Issue's `## Diagrams` block —
@@ -570,22 +763,30 @@ EOF
 }
 
 # =============================================================================
-# reconcile::compose_issue_description <body_text> <memory_block> [<diagrams_block>]
+# reconcile::compose_issue_description <body_text> <memory_block> [<diagrams_block>] [<overview_block>]
 #
-# Merge the bridge's memory + diagrams blocks into the spec Issue's
-# description. Strategy: for each fence family, if both markers exist
-# in <body_text>, splice between them; otherwise prepend a fresh
-# fenced block to the head of the description. Operator-added prose
-# outside the fences is preserved verbatim (FR-004).
+# Merge the bridge's overview + memory + diagrams blocks into the spec
+# Issue's description. Strategy: for each fence family, if both markers
+# exist in <body_text>, splice between them; otherwise insert a fresh
+# fenced block in the canonical position. Operator-added prose outside
+# the fences is preserved verbatim (FR-004).
+#
+# Canonical order (top → bottom of the rendered description):
+#   1. overview  (<!-- spec-kit-linear:overview:* -->)  — Fix 7
+#   2. memory    (<!-- spec-kit-linear:memory:*   -->)  — FR-004
+#   3. diagrams  (<!-- spec-kit-linear:diagrams:* -->)  — Fix 2
 #
 # <diagrams_block> may be empty — when the consumer repo isn't on
-# GitHub, render_diagrams_block returns no content and the caller
-# omits the diagrams fence entirely.
+# GitHub, render_diagrams_block returns no content and we omit the
+# diagrams fence entirely. <overview_block> may be empty — when
+# spec.md has no `## Overview` heading, render_overview_block returns
+# no content and we omit the overview fence entirely.
 # =============================================================================
 reconcile::compose_issue_description() {
     local body="$1"
     local memory_block="$2"
     local diagrams_block="${3:-}"
+    local overview_block="${4:-}"
 
     # The full memory block we want to emit, fences included.
     local memory_fenced
@@ -619,6 +820,44 @@ reconcile::compose_issue_description() {
     else
         # No fences yet — prepend.
         result="$(printf '%s\n\n%s' "$memory_fenced" "$result")"
+    fi
+
+    # ---- overview block splice (optional) -----------------------------
+    # Lands at the TOP of the description so a developer scanning the
+    # Linear Issue sees the plain-English summary BEFORE the memory
+    # metadata table. If an overview fence already exists, rewrite it
+    # in place; otherwise prepend a fresh fenced block to the head.
+    if [[ -n "$overview_block" ]]; then
+        local overview_fenced
+        overview_fenced=$(printf '%s\n%s\n%s' \
+            "${RECONCILE_OVERVIEW_BEGIN}" \
+            "${overview_block}" \
+            "${RECONCILE_OVERVIEW_END}")
+
+        if printf '%s' "$result" | grep -qF "${RECONCILE_OVERVIEW_BEGIN}" \
+            && printf '%s' "$result" | grep -qF "${RECONCILE_OVERVIEW_END}"; then
+            result="$(printf '%s' "$result" | awk \
+                -v begin="${RECONCILE_OVERVIEW_BEGIN}" \
+                -v end="${RECONCILE_OVERVIEW_END}" \
+                -v block="${overview_fenced}" '
+                BEGIN { skip = 0; printed = 0 }
+                {
+                    if (skip == 0 && index($0, begin) > 0) {
+                        skip = 1
+                        if (printed == 0) { print block; printed = 1 }
+                        next
+                    }
+                    if (skip == 1) {
+                        if (index($0, end) > 0) { skip = 0 }
+                        next
+                    }
+                    print
+                }')"
+        else
+            # No overview fence yet — prepend at the very top so the
+            # canonical order is overview → memory → diagrams.
+            result="$(printf '%s\n\n%s' "$overview_fenced" "$result")"
+        fi
     fi
 
     # ---- diagrams block splice (optional) -----------------------------
@@ -1353,12 +1592,13 @@ reconcile::sync_spec_issue() {
 
     local title="${feature_number}-${short_name}"
 
-    # Compose the memory + diagrams blocks into a final body.
-    local memory_block diagrams_block existing_body
+    # Compose the overview + memory + diagrams blocks into a final body.
+    local memory_block diagrams_block overview_block existing_body
     memory_block="$(reconcile::render_memory_block \
         "$feature_number" "$short_name" "$lifecycle_phase" \
         "$spec_dir" "$feature_branch")"
     diagrams_block="$(reconcile::render_diagrams_block)"
+    overview_block="$(reconcile::render_overview_block "$spec_dir")"
 
     # Locate the existing spec Issue (FR-004b).
     local nodes
@@ -1373,7 +1613,7 @@ reconcile::sync_spec_issue() {
         existing_body=""
         local description
         description="$(reconcile::compose_issue_description \
-            "$existing_body" "$memory_block" "$diagrams_block")"
+            "$existing_body" "$memory_block" "$diagrams_block" "$overview_block")"
 
         # Linear's IssueCreateInput requires `labelIds: [String!]`
         # (UUIDs) — names are rejected on the raw GraphQL path. We
@@ -1470,11 +1710,12 @@ reconcile::sync_spec_issue() {
     current_labels="$(printf '%s' "$current_response" \
         | jq -c '[.data.issue.labels.nodes[].name]')"
 
-    # Compute the desired description by splicing the new memory +
-    # diagrams blocks into whatever the operator has placed around them.
+    # Compute the desired description by splicing the new overview +
+    # memory + diagrams blocks into whatever the operator has placed
+    # around them.
     local desired_description
     desired_description="$(reconcile::compose_issue_description \
-        "$current_description" "$memory_block" "$diagrams_block")"
+        "$current_description" "$memory_block" "$diagrams_block" "$overview_block")"
 
     # Compute the desired label set: preserve operator-added labels,
     # add (or keep) spec_label + phase_label, remove any stale phase:*
