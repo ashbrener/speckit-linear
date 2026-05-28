@@ -93,34 +93,20 @@ source "${SCRIPT_DIR}/parser.sh"
 # every consumer repo's invocation.
 readonly RECONCILE_CONFIG_PATH_DEFAULT=".specify/extensions/linear/linear-config.yml"
 
-# The fenced markers around the human-readable Overview block in spec
-# Issue descriptions. This block is sourced from spec.md's `## Overview`
-# section verbatim (truncated to the first paragraph when long) so a
-# developer scanning the Linear Issue sees what the spec actually does
-# without opening spec.md on GitHub. Owned by the bridge — everything
-# between BEGIN and END is rewritten on every reconcile.
-readonly RECONCILE_OVERVIEW_BEGIN="<!-- spec-kit-linear:overview:begin -->"
-readonly RECONCILE_OVERVIEW_END="<!-- spec-kit-linear:overview:end -->"
-
 # Cap on the verbatim Overview body before we truncate to the first
 # paragraph (split on `\n\n`) + ellipsis. Linear descriptions are
 # already long with the memory + diagrams blocks; keeping this under
 # 1500 chars preserves the at-a-glance value the block is meant to add.
 readonly RECONCILE_OVERVIEW_MAX_CHARS=1500
 
-# The fenced markers around the memory block in spec Issue descriptions
-# (FR-004). Bridge rewrites everything between BEGIN and END on every
-# reconcile; operator-added prose ABOVE or BELOW the fences survives.
-readonly RECONCILE_MEMORY_BEGIN="<!-- spec-kit-linear:memory:begin -->"
-readonly RECONCILE_MEMORY_END="<!-- spec-kit-linear:memory:end -->"
-
-# The fenced markers around the diagrams pointer block in spec Issue
-# descriptions. Separate fence family from memory block so each can be
-# independently rewritten without disturbing the other. The diagrams
-# block is best-effort: when the consumer repo's git remote isn't a
-# GitHub URL we omit the block entirely rather than emit broken links.
-readonly RECONCILE_DIAGRAMS_BEGIN="<!-- spec-kit-linear:diagrams:begin -->"
-readonly RECONCILE_DIAGRAMS_END="<!-- spec-kit-linear:diagrams:end -->"
+# Bridge-owned description policy (FR-004, FR-016): the spec Issue's
+# description body is fully owned and rewritten by the bridge on every
+# reconcile, in canonical order: overview → memory → diagrams. There
+# are no fence markers — Linear renders HTML comments and `<details>`
+# tags as visible text nodes (probed empirically on OSH-14), so any
+# fence shape would leak as literal markup in Linear's UI. Operator
+# annotations belong in Linear comments (FR-008), which the bridge
+# never touches.
 
 # Header preface for task-phase sub-issue descriptions (FR-006). The
 # one-way semantics must be impossible to miss per spec. Backticks here
@@ -524,8 +510,9 @@ reconcile::render_memory_block() {
         *)              phase_display="$(printf '%s' "$lifecycle_phase" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')" ;;
     esac
 
-    # Markdown table — fixed column order (Field / Value). Begin/end
-    # fence markers are added by the caller (compose_issue_description).
+    # Markdown table — fixed column order (Field / Value). The caller
+    # (compose_issue_description) concatenates this block into the
+    # bridge-owned description body.
     cat <<EOF
 | Field | Value |
 |---|---|
@@ -638,8 +625,8 @@ reconcile::_github_base_url() {
 # block (Fix 7 — the human-readable Overview pointer). Sourced verbatim
 # from spec.md's `## Overview` section so a developer scanning the
 # Linear Issue sees what the spec actually does without opening
-# spec.md on GitHub. The returned content does NOT include the
-# begin/end fences; the caller (compose_issue_description) wraps it.
+# spec.md on GitHub. The caller (compose_issue_description) concatenates
+# this block into the bridge-owned description body.
 #
 # Length handling: if the extracted Overview exceeds
 # RECONCILE_OVERVIEW_MAX_CHARS (1500), truncate to the FIRST paragraph
@@ -714,8 +701,8 @@ EOF
 #
 # Build the markdown body for the spec Issue's `## Diagrams` block —
 # four bullet pointers at the consumer repo's README anchors. The
-# returned content does NOT include the begin/end fences; the caller
-# (compose_issue_description) wraps it.
+# caller (compose_issue_description) concatenates this block into the
+# bridge-owned description body.
 #
 # The base URL is derived from `git remote get-url origin` and the
 # usual SSH-→-HTTPS rewrite. If the consumer repo's remote isn't
@@ -763,133 +750,41 @@ EOF
 }
 
 # =============================================================================
-# reconcile::_strip_fence <body> <begin_marker> <end_marker>
+# reconcile::compose_issue_description <overview_block> <memory_block> [<diagrams_block>]
 #
-# Remove the first fence-pair (begin..end, inclusive) from <body>.
-# Returns the body with the fence excised and any resulting triple
-# newline run collapsed to a double. If only the begin marker is
-# present (malformed fence), returns the body unchanged so we never
-# eat the rest of the description.
+# Build the spec Issue description from scratch in canonical order:
 #
-# BSD-awk safe — pure bash state machine, no awk -v block=multi-line.
-# =============================================================================
-reconcile::_strip_fence() {
-    local body="$1"
-    local begin="$2"
-    local end="$3"
-
-    if ! printf '%s' "$body" | grep -qF "$begin" \
-        || ! printf '%s' "$body" | grep -qF "$end"; then
-        printf '%s' "$body"
-        return 0
-    fi
-
-    local out="" line skip=0
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        if [[ "$skip" -eq 0 && "$line" == *"$begin"* ]]; then
-            skip=1
-            continue
-        fi
-        if [[ "$skip" -eq 1 ]]; then
-            if [[ "$line" == *"$end"* ]]; then
-                skip=0
-            fi
-            continue
-        fi
-        out+="${line}"$'\n'
-    done <<< "$body"
-
-    # Drop leading blank lines left behind when the fence was at the top
-    while [[ "$out" == $'\n'* ]]; do
-        out="${out#$'\n'}"
-    done
-    # Collapse triple-newline runs created when a fence sat between two
-    # blank-line-separated paragraphs.
-    while [[ "$out" == *$'\n\n\n'* ]]; do
-        out="${out//$'\n\n\n'/$'\n\n'}"
-    done
-    # Trim trailing newlines so the caller can concatenate cleanly.
-    while [[ "$out" == *$'\n' ]]; do
-        out="${out%$'\n'}"
-    done
-
-    printf '%s' "$out"
-}
-
-# =============================================================================
-# reconcile::compose_issue_description <body_text> <memory_block> [<diagrams_block>] [<overview_block>]
+#   overview → memory → diagrams
 #
-# Rebuild the spec Issue description from scratch in canonical order:
-#
-#   overview → memory → diagrams → operator-around-fences remainder
-#
-# Strategy (Plan B / canonical rebuild — Principle II at the description
-# layer): strip every bridge-owned fence pair out of <body_text>, keep
-# whatever the operator wrote outside the fences as `body_remainder`,
-# then concatenate the freshly-rendered fenced blocks in canonical
-# order and append the remainder. The bridge fully reconstructs its
-# blocks every reconcile — no per-fence splice paths, no "replace vs
-# prepend vs insert-after" branches whose ordering depends on the
-# current state of the description.
+# The bridge fully owns the description body (FR-004, FR-016): any
+# prior content in Linear is discarded on every reconcile. Operator
+# annotations belong in Linear comments (FR-008), which the bridge
+# never touches. There are no fence markers — Linear renders HTML
+# comments and `<details>` tags as visible text nodes (probed
+# empirically on OSH-14), so any fence shape would leak as literal
+# markup. The unidirectional, bridge-owned policy makes the per-fence
+# splice machinery unnecessary.
 #
 # <overview_block> and <diagrams_block> may be empty:
 #   - empty overview → no `## Overview` heading in spec.md
 #   - empty diagrams → consumer repo isn't on GitHub
-# In both cases we omit the fenced block entirely (graceful
-# degradation). The memory block is mandatory.
-#
-# Trade-off (documented): operator prose written INSIDE any bridge
-# fence is overwritten on every reconcile. Operator annotations belong
-# in Linear comments (which the bridge never touches) or outside the
-# fences in the description body.
+# In both cases we omit the block entirely (graceful degradation).
+# The memory block is mandatory.
 # =============================================================================
 reconcile::compose_issue_description() {
-    local body="$1"
+    local overview_block="$1"
     local memory_block="$2"
     local diagrams_block="${3:-}"
-    local overview_block="${4:-}"
 
-    # Build the three fenced blocks. Memory is mandatory; overview and
-    # diagrams are skipped when their content is empty.
-    local memory_fenced overview_fenced="" diagrams_fenced=""
-    memory_fenced=$(printf '%s\n%s\n%s' \
-        "${RECONCILE_MEMORY_BEGIN}" \
-        "${memory_block}" \
-        "${RECONCILE_MEMORY_END}")
-    if [[ -n "$overview_block" ]]; then
-        overview_fenced=$(printf '%s\n%s\n%s' \
-            "${RECONCILE_OVERVIEW_BEGIN}" \
-            "${overview_block}" \
-            "${RECONCILE_OVERVIEW_END}")
-    fi
-    if [[ -n "$diagrams_block" ]]; then
-        diagrams_fenced=$(printf '%s\n%s\n%s' \
-            "${RECONCILE_DIAGRAMS_BEGIN}" \
-            "${diagrams_block}" \
-            "${RECONCILE_DIAGRAMS_END}")
-    fi
-
-    # Strip every bridge-owned fence pair from the body — whatever is
-    # left is operator-around-fences content that we preserve verbatim.
-    local body_remainder="$body"
-    body_remainder=$(reconcile::_strip_fence "$body_remainder" \
-        "${RECONCILE_OVERVIEW_BEGIN}" "${RECONCILE_OVERVIEW_END}")
-    body_remainder=$(reconcile::_strip_fence "$body_remainder" \
-        "${RECONCILE_MEMORY_BEGIN}"   "${RECONCILE_MEMORY_END}")
-    body_remainder=$(reconcile::_strip_fence "$body_remainder" \
-        "${RECONCILE_DIAGRAMS_BEGIN}" "${RECONCILE_DIAGRAMS_END}")
-
-    # Assemble in canonical order. Empty blocks are skipped.
+    # Assemble in canonical order. Empty optional blocks are skipped;
+    # memory is mandatory. Blocks are separated by a blank line.
     local result=""
-    if [[ -n "$overview_fenced" ]]; then
-        result+="${overview_fenced}"$'\n\n'
+    if [[ -n "$overview_block" ]]; then
+        result+="${overview_block}"$'\n\n'
     fi
-    result+="${memory_fenced}"
-    if [[ -n "$diagrams_fenced" ]]; then
-        result+=$'\n\n'"${diagrams_fenced}"
-    fi
-    if [[ -n "$body_remainder" ]]; then
-        result+=$'\n\n'"${body_remainder}"
+    result+="${memory_block}"
+    if [[ -n "$diagrams_block" ]]; then
+        result+=$'\n\n'"${diagrams_block}"
     fi
 
     # Trim trailing newlines for clean concatenation downstream.
@@ -1586,7 +1481,7 @@ reconcile::sync_spec_issue() {
     spec_estimate="$(parser::spec_estimate "$tasks_md" 2>/dev/null || true)"
 
     # Compose the overview + memory + diagrams blocks into a final body.
-    local memory_block diagrams_block overview_block existing_body
+    local memory_block diagrams_block overview_block
     memory_block="$(reconcile::render_memory_block \
         "$feature_number" "$short_name" "$lifecycle_phase" \
         "$spec_dir" "$feature_branch")"
@@ -1603,10 +1498,9 @@ reconcile::sync_spec_issue() {
         # Create. Per FR-014 we set stateId DIRECTLY to the inferred
         # end-state — no intermediate transitions visible in Linear's
         # activity log.
-        existing_body=""
         local description
         description="$(reconcile::compose_issue_description \
-            "$existing_body" "$memory_block" "$diagrams_block" "$overview_block")"
+            "$overview_block" "$memory_block" "$diagrams_block")"
 
         # Linear's IssueCreateInput requires `labelIds: [String!]`
         # (UUIDs) — names are rejected on the raw GraphQL path. We
@@ -1711,12 +1605,12 @@ reconcile::sync_spec_issue() {
     current_labels="$(printf '%s' "$current_response" \
         | jq -c '[.data.issue.labels.nodes[].name]')"
 
-    # Compute the desired description by splicing the new overview +
-    # memory + diagrams blocks into whatever the operator has placed
-    # around them.
+    # Compute the desired description. The bridge owns the full body
+    # (FR-004, FR-016): prior description content is discarded and the
+    # canonical overview + memory + diagrams blocks are emitted fresh.
     local desired_description
     desired_description="$(reconcile::compose_issue_description \
-        "$current_description" "$memory_block" "$diagrams_block" "$overview_block")"
+        "$overview_block" "$memory_block" "$diagrams_block")"
 
     # Compute the desired label set: preserve operator-added labels,
     # add (or keep) spec_label + phase_label, remove any stale phase:*

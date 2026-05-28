@@ -373,9 +373,16 @@ intermediate phase transitions appearing in Linear's activity log.
   applicable), the git branch the spec lives on, the worktree path(s)
   where that branch is currently checked out, the timestamp the spec
   was last touched on disk, and a link to the spec's GitHub source.
-  This block MUST be rewritten on every reconcile so it is the
-  authoritative quick-look view for "what is this spec doing right
-  now".
+  The bridge fully owns the spec Issue's description body: the entire
+  description is rewritten on every reconcile (overview → memory →
+  diagrams, in canonical order) and any prior content is discarded.
+  No fence markers are used — Linear's renderer surfaces HTML comments
+  and `<details>` tags as visible text nodes, so there is no fence
+  shape that can hide bridge framing from the UI. Operator
+  annotations belong in Linear comments on the spec Issue (per FR-008,
+  the canonical escape hatch), which the bridge never touches. This
+  is the description-layer expression of the unidirectional sync rule
+  in FR-016.
 - **FR-004b**: The bridge MUST stamp a workspace label
   `speckit-spec:NNN` (NNN = feature number) on each spec Issue at
   creation time and use that label as the stable lookup key on every

@@ -302,7 +302,7 @@ One Linear Issue per spec. The central entity the bridge manipulates.
 | `id` | UUID | Linear | resolved on first sync via label lookup (FR-004b) |
 | `identifier` | string | Linear | `OSH-NNN` form, display only |
 | `title` | string | bridge | encodes feature number + short name: `NNN-<short-name>` (FR-003) |
-| `description` | string (markdown) | bridge | contains the structured "memory" block (FR-004), see schema below |
+| `description` | string (markdown) | bridge | fully bridge-owned body — overview ++ memory ++ diagrams in canonical order (FR-004, FR-016); see schema below |
 | `teamId` | UUID | bridge | = `linear.team.id` |
 | `projectId` | UUID | bridge | = `linear.project.id` |
 | `stateId` | UUID | bridge | one of `workflow_state_uuids.*`, computed from `lifecycle_phase` (§ 6) |
@@ -312,20 +312,27 @@ One Linear Issue per spec. The central entity the bridge manipulates.
 | `assigneeId` | UUID? | bridge (create only) | set to `linear.operator.user_id` from config on every `issueCreate` (FR-034); NOT passed on `issueUpdate` so manual reassignment in Linear's UI persists. Absent config block → unassigned with one warning per reconcile run (graceful degradation). |
 | `createdAt` / `updatedAt` | DateTime | Linear | read for race-resolution (FR-004b) |
 
-**Memory block schema** (FR-004) — markdown fragment rendered into
-`description`, delimited by HTML comment fences so reconcile can rewrite
-it without disturbing operator-added prose around it:
+**Description body schema** (FR-004) — the bridge writes the entire
+`description` on every reconcile in canonical order: `overview ++
+memory ++ diagrams` (each separated by a blank line; overview and
+diagrams are skipped when empty). No fence markers wrap any block —
+Linear renders HTML comments and `<details>` tags as visible text
+nodes, so fences would leak as literal markup. Operator annotations
+belong in Linear comments on the spec Issue (FR-008), which the
+bridge never reads or writes.
+
+The memory block itself is the markdown table emitted by
+`render_memory_block`:
 
 ```markdown
-<!-- spec-kit-linear:memory:begin -->
-**Phase**: <lifecycle_phase>
-**Current task phase**: Phase <N> — <Name>  *(if applicable)*
-**Current task**: T###-NNN — <title>  *(if applicable)*
-**Branch**: `<feature-branch>`
-**Worktree(s)**: `<absolute-path-1>` [, `<absolute-path-2>`, …]
-**Last touched (disk)**: YYYY-MM-DDTHH:MM:SSZ
-**Source**: <github-url-to-specs/NNN-feature/spec.md>
-<!-- spec-kit-linear:memory:end -->
+| Field | Value |
+|---|---|
+| **Phase** | <lifecycle_phase> |
+| **Branch** | `<feature-branch>` |
+| **Worktree(s)** | `<absolute-path-1>` [, `<absolute-path-2>`, …] |
+| **Last touched** | YYYY-MM-DDTHH:MM:SSZ |
+| **Source** | [GitHub →](<github-url-to-specs/NNN-feature/>) |
+| **Spec** | NNN-<short-name> |
 ```
 
 **Invariants**
@@ -335,7 +342,8 @@ it without disturbing operator-added prose around it:
 - Race resolution: if >1 Issue with the same `speckit-spec:NNN` label
   exists in the same Project, keep the one with the most recent
   `updatedAt`; archive the others (FR-004b).
-- The memory block is rewritten on EVERY reconcile (FR-004).
+- The description body is rewritten on EVERY reconcile (FR-004,
+  FR-016 — unidirectional sync).
 
 ### 3.5 Sub-issue (= task phase)
 
