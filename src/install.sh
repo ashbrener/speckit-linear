@@ -220,18 +220,36 @@ after_* hooks in .specify/extensions.yml with optional: false (FR-031),
 installs post-checkout / post-commit / post-merge git hooks per FR-033,
 and (optionally) drops the GitHub Action template per FR-027 / FR-029.
 
+INTERACTIVE DEFAULT FLOW (v0.1.1+, FR-037..FR-041)
+  With no UUID flags, install drives a discovery flow:
+    1. Resolve LINEAR_API_KEY from env, .env, or interactive prompt.
+    2. Verify the key with a `viewer` query (operator identity).
+    3. Pick a team from the workspace (auto-pick if only one).
+    4. Pick a project from the team — or create a new one.
+    5. Write linear-config.yml with resolved UUIDs (operator never
+       sees a raw UUID per SC-010).
+
 OPTIONS
   --project <UUID>     Attach to an existing Linear Project by UUID.
-                       Mutually exclusive with --auto-create.
+                       Mutually exclusive with --auto-create. Skips
+                       the interactive project picker.
   --auto-create        Create a new Linear Project named after the
                        current repo's directory name. Mutually
-                       exclusive with --project.
+                       exclusive with --project. Deprecated in v0.1.1
+                       — the interactive "Create new project" picker
+                       option is the new ergonomic default; this flag
+                       is retained bit-for-bit for CI / scripted
+                       installs and will be removed in v0.2.0.
   --team <UUID>        Linear Team UUID. Required in --non-interactive
                        mode; otherwise auto-detected (single team) or
-                       prompted (multi-team workspace).
-  --non-interactive    Refuse to prompt; require --project (or
-                       --auto-create) and --team to be set on the CLI.
-                       Also accepted as --no-prompt.
+                       picked interactively (multi-team workspace).
+                       Skips the interactive team picker.
+  --non-interactive    Refuse to prompt; requires BOTH --team <UUID>
+                       AND --project <UUID> (or --team + --auto-create
+                       as the v0.1.0-compat combination). Tightened in
+                       v0.1.1 per FR-045 — never falls through to the
+                       interactive prompts. Also accepted as
+                       --no-prompt.
   --with-action        Drop templates/github-action.yml into
                        .github/workflows/spec-kit-linear-sync.yml and
                        print the gh secret set LINEAR_API_TOKEN command
@@ -242,8 +260,19 @@ OPTIONS
                        (suppresses the interactive prompt).
   --dev                Install from this repo's local checkout rather
                        than via `specify extension add`. Used for
-                       dogfood development.
+                       dogfood development. Subject to the FR-046
+                       self-install guard: refuses to install into the
+                       bridge's own checkout (exit 2). FR-049 surfaces
+                       a warning if the source carries a vendored
+                       .git/ directory.
   --help               Print this help and exit.
+
+INSTALL VIA `specify extension add` (FR-047)
+  Operator-facing path:
+    specify extension add --from \
+      https://github.com/<owner>/<repo>/archive/refs/heads/main.zip
+  The plain --from <repo-url> form errors with BadZipFile — use the
+  archive-zip URL or --dev <local-path>.
 
 ENVIRONMENT
   SPECKIT_LINEAR_DOGFOOD_SAFE
@@ -373,6 +402,16 @@ install::parse_args() {
             install::usage >&2
             exit 2
         fi
+    fi
+
+    # T210 / FR-flags §2 — soft-deprecation notice for --auto-create when
+    # used INTERACTIVELY. The flag remains bit-for-bit functional under
+    # --non-interactive (load-bearing for CI / scripted installs); only
+    # the interactive case logs the notice pointing operators at the new
+    # "Create new project" picker option.
+    if (( INSTALL_FLAG_AUTO_CREATE == 1 )) && (( INSTALL_FLAG_NON_INTERACTIVE == 0 )); then
+        install::_log_warn \
+            "--auto-create is deprecated; the \"Create new project\" picker option is the new ergonomic default (v0.1.1)"
     fi
 }
 
@@ -1952,6 +1991,359 @@ install::maybe_prompt_action() {
             install::_log_warn "unknown Action-prompt choice '${choice}'; skipping Layer E (re-run with --with-action to install)"
             ;;
     esac
+}
+
+# =============================================================================
+# Spec 002 — install ergonomics redesign (v0.1.1)
+#
+# The helpers below are the building blocks of the new discovery state
+# machine (S0 → S7) described in `specs/002-install-ergonomics/data-model.md`
+# §4. They are foundational STUBS at this phase (Phase 2) — full
+# behaviour lands incrementally in Phase 3 (US1 — interactive install),
+# Phase 4 (US2 — CI / scripted regression), and Phase 5 (US3 — operator
+# safety guards).
+#
+# Each stub carries its signature, exit-code contract, and module-global
+# write surface. They MUST NOT be wired into `install::run` until US1
+# (T232..T239). At Phase 2 the unit-test harness asserts only that the
+# functions exist with the right signature — call them with a typed
+# argument vector and the test passes.
+#
+# All session state lives on `INSTALL_SESSION_*` module globals so the
+# bats harness can inspect them after each helper invocation without
+# round-tripping through stdout (operator-visible surface is reserved
+# for the prompts themselves — never internal UUIDs per SC-010).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Spec 002 module-level session state (populated by the helpers below).
+# Declared up-front so `set -u` doesn't bite at first read in the stubs
+# or the bats harness's call-count assertions.
+# -----------------------------------------------------------------------------
+
+# FR-037 — API key resolution outcome.
+INSTALL_SESSION_API_KEY=""
+# api_key_source ∈ {env, dotenv, prompt} — surfaced in the install
+# summary's "Key sourced from:" row per install-prompts.md §7.
+INSTALL_SESSION_API_KEY_SOURCE=""
+
+# FR-038 / FR-048 — viewer query response (captured exactly ONCE per
+# install invocation; consumed by both FR-034 operator block and the
+# FR-039 team picker authorization).
+INSTALL_SESSION_VIEWER_ID=""
+INSTALL_SESSION_VIEWER_NAME=""
+INSTALL_SESSION_VIEWER_EMAIL=""
+INSTALL_SESSION_VIEWER_ORG_NAME=""
+INSTALL_SESSION_VIEWER_ORG_URL_KEY=""
+
+# FR-039 — team picker. Parallel arrays (bash 4+) keyed by index
+# 0..N-1 matching the teams query's `nodes[]` order.
+INSTALL_SESSION_TEAMS_IDS=()
+INSTALL_SESSION_TEAMS_NAMES=()
+INSTALL_SESSION_TEAMS_KEYS=()
+
+# FR-040 — project picker. Parallel arrays keyed by index 0..N-1
+# matching the team(id).projects query's `nodes[]` order.
+INSTALL_SESSION_PROJECTS_IDS=()
+INSTALL_SESSION_PROJECTS_NAMES=()
+
+# FR-039 / FR-040 — operator picks. Internal UUIDs (NEVER surfaced
+# on stdout/stderr per SC-010; the picker prompts reference index +
+# key + name only).
+INSTALL_SESSION_SELECTED_TEAM_ID=""
+INSTALL_SESSION_SELECTED_TEAM_KEY=""
+INSTALL_SESSION_SELECTED_TEAM_NAME=""
+INSTALL_SESSION_SELECTED_PROJECT_ID=""
+INSTALL_SESSION_SELECTED_PROJECT_NAME=""
+INSTALL_SESSION_SELECTED_PROJECT_URL=""
+# project_choice ∈ {attach, create} — distinguishes S4 → S6 (attach)
+# from S4 → S5 → S6 (create) per data-model.md §4.
+INSTALL_SESSION_PROJECT_CHOICE=""
+
+# -----------------------------------------------------------------------------
+# install::detect_self_install <src_path> <target_path>  (T203, FR-046)
+#
+# Compare the canonical (`pwd -P`) representations of SOURCE (the
+# bridge's own checkout) and TARGET (the consumer repo). When the two
+# resolve to the same canonical path the install MUST halt with exit 2
+# WITHOUT writing anything to the filesystem — this catches the
+# `--dev` recursive-self-copy bug spec.md describes (macOS filename
+# length limit at ~30 levels of nesting).
+#
+# Uses `cd … && pwd -P` rather than `realpath` to avoid the GNU
+# coreutils dependency per plan.md A7. Restores cwd via subshell.
+#
+# Returns:
+#   0 — paths differ; install can proceed.
+#   2 — paths equal; emits verbatim FR-046 / install-flags.md §4
+#       message and exits the process.
+#
+# Phase 2 status: STUB. Path comparison + exit 0/2 wired; verbatim
+# message text matches install-flags.md §4. Wired into `install::run`
+# at S0 in Phase 5 task T258.
+# -----------------------------------------------------------------------------
+install::detect_self_install() {
+    local src_path="${1:?install::detect_self_install: src_path required}"
+    local target_path="${2:?install::detect_self_install: target_path required}"
+
+    local src_canon target_canon
+    if ! src_canon="$(cd "$src_path" 2>/dev/null && pwd -P)"; then
+        # Source path is unreadable — can't compare; do not halt.
+        # Phase 3 wiring may decide this is itself a hard error, but
+        # the FR-046 guard is specifically about path equality.
+        return 0
+    fi
+    if ! target_canon="$(cd "$target_path" 2>/dev/null && pwd -P)"; then
+        # Target path is unreadable — likewise not the FR-046 case.
+        return 0
+    fi
+
+    if [[ "$src_canon" == "$target_canon" ]]; then
+        # Verbatim message from contracts/install-flags.md §4.
+        install::_log_error "source path equals target path."
+        printf '                 Detected: this install would copy the bridge into itself.\n' >&2
+        printf '                 fix: either\n' >&2
+        printf '                   (a) install into a different consumer repo, or\n' >&2
+        printf '                   (b) once the bridge is listed in the spec-kit community\n' >&2
+        printf '                       catalog (v0.1.x+), use `specify extension add linear`\n' >&2
+        printf '                       from the catalog form.\n' >&2
+        printf '                 (FR-046 — self-install recursion guard)\n' >&2
+        exit 2
+    fi
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# install::detect_vendored_git <source_path>  (T204, FR-049)
+#
+# Check whether the install source carries a vendored `.git/`
+# directory under `<source>/.specify/extensions/linear/`. When present,
+# emit a `summary::add warned` row with the `rm -rf …` remediation
+# string and CONTINUE the install (Principle VIII — operator consent;
+# do NOT auto-delete).
+#
+# Phase 2 status: STUB. Detection + warning emit wired. Wired into
+# `install::run_dependency_report` in Phase 5 task T259.
+# -----------------------------------------------------------------------------
+install::detect_vendored_git() {
+    local source_path="${1:?install::detect_vendored_git: source_path required}"
+    local vendored_git="${source_path}/.specify/extensions/linear/.git"
+
+    if [[ -d "$vendored_git" ]]; then
+        summary::add "warned" \
+            "vendored .git/ detected at ${vendored_git}; remove with: rm -rf ${vendored_git} (FR-049)"
+        install::_log_warn \
+            "vendored .git/ detected under .specify/extensions/linear/ — remediation: rm -rf ${vendored_git} (FR-049)"
+        return 0
+    fi
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# install::prompt_for_api_key  (T205, FR-037)
+#
+# Resolve LINEAR_API_KEY in priority order per install-prompts.md §2:
+#   1. `LINEAR_API_KEY` env var (highest precedence).
+#   2. `.env` line at repo root.
+#   3. Interactive `read -r -s` prompt (echo suppressed).
+#
+# Populates `INSTALL_SESSION_API_KEY` and `INSTALL_SESSION_API_KEY_SOURCE`
+# (∈ {env, dotenv, prompt}). On (3) follow up with "Save to .env?"
+# (§2.3), .env conflict triage (§2.4), and EOF handling (§2.5).
+#
+# Halts (exit 2) when (1) + (2) both miss under `--non-interactive`
+# per FR-037 / FR-045.
+#
+# Phase 2 status: STUB. Reads env var if present, otherwise tries
+# `.env`. Interactive prompt + save flow + conflict triage land in
+# Phase 3 task T232 (US1 wiring) — the bats unit tests in T221..T223
+# drive the full FR-037 resolution order through a controlled stdin.
+# -----------------------------------------------------------------------------
+install::prompt_for_api_key() {
+    # Priority 1 — env var.
+    if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+        INSTALL_SESSION_API_KEY="$LINEAR_API_KEY"
+        INSTALL_SESSION_API_KEY_SOURCE="env"
+        return 0
+    fi
+
+    # Priority 2 — .env line at repo root.
+    if [[ -f ".env" ]]; then
+        local dotenv_value
+        dotenv_value="$(grep -E '^LINEAR_API_KEY=' .env 2>/dev/null | tail -n 1 | sed -E 's/^LINEAR_API_KEY=//' | sed -E 's/^"(.*)"$/\1/' | sed -E "s/^'(.*)'\$/\\1/")"
+        if [[ -n "$dotenv_value" ]]; then
+            INSTALL_SESSION_API_KEY="$dotenv_value"
+            INSTALL_SESSION_API_KEY_SOURCE="dotenv"
+            return 0
+        fi
+    fi
+
+    # Priority 3 — interactive prompt. STUB: full FR-037 prompt loop
+    # (save-to-.env, conflict triage, EOF handling) lands in Phase 3
+    # task T232. For Phase 2 we honour FR-045: halt under
+    # --non-interactive when (1)+(2) both miss.
+    if (( INSTALL_FLAG_NON_INTERACTIVE == 1 )); then
+        install::_die 2 \
+            "--non-interactive without LINEAR_API_KEY in env or .env (FR-037 / FR-045)"
+    fi
+
+    # Phase 2 stub: signal that interactive resolution is needed but
+    # not yet implemented. Phase 3 wiring replaces this with the full
+    # `read -r -s` flow per install-prompts.md §2.
+    INSTALL_SESSION_API_KEY_SOURCE="prompt"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# install::pick_team_interactively  (T206, FR-039)
+#
+# Consume the `INSTALL_SESSION_TEAMS_*` parallel arrays populated by
+# the S3 `teams` query and produce a single operator pick stored on
+# `INSTALL_SESSION_SELECTED_TEAM_{ID,KEY,NAME}`. Behaviour matrix per
+# install-prompts.md §3:
+#
+#   len == 0  → halt exit 2 with §3.5 remediation.
+#   len == 1  → auto-pick, emit §3.4 surface row.
+#   len >= 2  → render `%2d) %-8s — %s` numbered list, prompt
+#               `Pick a team [1-N]:`, range-validate, re-prompt
+#               on invalid.
+#   len >  20 → render first 20 + §3.3 overflow warning row,
+#               then prompt as `[1-20]`.
+#
+# EOF / Ctrl-C → halt exit 2 with §3.6 remediation.
+#
+# Phase 2 status: STUB. Signature + array consumption + auto-pick (len
+# == 1) wired so the bats harness can assert the picker exists.
+# Numbered-list rendering, overflow warning, range validation, and EOF
+# handling all land in Phase 3 task T234.
+# -----------------------------------------------------------------------------
+install::pick_team_interactively() {
+    local team_count="${#INSTALL_SESSION_TEAMS_IDS[@]}"
+
+    if (( team_count == 0 )); then
+        install::_die 2 \
+            "no teams accessible to this API key. fix: check workspace membership at https://linear.app/settings/teams or use a different API key. (FR-039)"
+    fi
+
+    if (( team_count == 1 )); then
+        INSTALL_SESSION_SELECTED_TEAM_ID="${INSTALL_SESSION_TEAMS_IDS[0]}"
+        INSTALL_SESSION_SELECTED_TEAM_KEY="${INSTALL_SESSION_TEAMS_KEYS[0]}"
+        INSTALL_SESSION_SELECTED_TEAM_NAME="${INSTALL_SESSION_TEAMS_NAMES[0]}"
+        install::_log_info \
+            "Found 1 team accessible — using ${INSTALL_SESSION_SELECTED_TEAM_KEY} (${INSTALL_SESSION_SELECTED_TEAM_NAME}) (auto-picked). Override with --team <UUID> on next install."
+        return 0
+    fi
+
+    # Phase 2 stub: multi-team rendering + range-validated prompt is
+    # implemented in Phase 3 task T234. For now default to the first
+    # team so the test harness can assert the helper completed without
+    # error; Phase 3 tests (T225) replace this stub with the full
+    # interactive flow.
+    INSTALL_SESSION_SELECTED_TEAM_ID="${INSTALL_SESSION_TEAMS_IDS[0]}"
+    INSTALL_SESSION_SELECTED_TEAM_KEY="${INSTALL_SESSION_TEAMS_KEYS[0]}"
+    INSTALL_SESSION_SELECTED_TEAM_NAME="${INSTALL_SESSION_TEAMS_NAMES[0]}"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# install::pick_project_interactively  (T207, FR-040)
+#
+# Same numbered-list rendering as the team picker, with two
+# additions per install-prompts.md §4:
+#
+#   1. "Create new project" is ALWAYS appended as the FINAL option
+#      (index N+1 where N == len(projects)). Even when N == 0,
+#      "Create new project" is option `1)`.
+#   2. Sets `INSTALL_SESSION_PROJECT_CHOICE` ∈ {attach, create} per
+#      the operator's pick.
+#
+# Overflow warning (§4.3) appended when N > 20.
+#
+# Phase 2 status: STUB. Signature + array consumption + the empty-list
+# "Create new is the only option" branch wired so the bats harness can
+# assert the picker exists. Full multi-project rendering + range
+# validation lands in Phase 3 task T235.
+# -----------------------------------------------------------------------------
+install::pick_project_interactively() {
+    local project_count="${#INSTALL_SESSION_PROJECTS_IDS[@]}"
+
+    if (( project_count == 0 )); then
+        # FR-040: zero projects → "Create new project" is the only
+        # option (and effectively automatic in Phase 2).
+        INSTALL_SESSION_PROJECT_CHOICE="create"
+        return 0
+    fi
+
+    # Phase 2 stub: multi-project rendering + Create-new tail + range
+    # validation are implemented in Phase 3 task T235. Default to the
+    # first project (attach branch) so the harness can verify the
+    # helper exists; Phase 3 tests (T226) drive the full flow.
+    INSTALL_SESSION_PROJECT_CHOICE="attach"
+    INSTALL_SESSION_SELECTED_PROJECT_ID="${INSTALL_SESSION_PROJECTS_IDS[0]}"
+    INSTALL_SESSION_SELECTED_PROJECT_NAME="${INSTALL_SESSION_PROJECTS_NAMES[0]}"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# install::prompt_new_project_name  (T208, FR-041)
+#
+# Prompt for the new project's name with the repo basename as the
+# default per install-prompts.md §5 + plan.md A6. Runs the
+# duplicate-name pre-check via the existing `install::_find_existing_project`
+# (`src/install.sh:843`) and renders the `[create-anyway/pick-existing/rename]`
+# triage prompt on a hit (§5.3). Loops on `rename`.
+#
+# On accept (no duplicate, or operator picked `create-anyway`), echoes
+# the chosen name to stdout for the caller's S5 `projectCreate`
+# mutation.
+#
+# Phase 2 status: STUB. Returns the repo basename without prompting
+# or duplicate-checking — the full interactive prompt loop lands in
+# Phase 3 task T236. Bats tests (T227) drive the full flow with
+# fixture-mocked duplicate-name responses.
+# -----------------------------------------------------------------------------
+install::prompt_new_project_name() {
+    local default_name
+    if ! default_name="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"; then
+        default_name="$(basename "$(pwd)")"
+    fi
+
+    # Phase 2 stub: echo the default name; Phase 3 task T236 adds the
+    # `read -r` prompt + duplicate-name pre-check + triage loop per
+    # install-prompts.md §5.
+    printf '%s\n' "$default_name"
+}
+
+# -----------------------------------------------------------------------------
+# install::quick_validate_binding <team_uuid> <project_uuid>  (T209, FR-044)
+#
+# When both `--team` and `--project` are passed, issue a single
+# combined `team(id){...} project(id){... teams{nodes{id}}}` query per
+# install-discovery-graphql.md §5.5 and validate:
+#
+#   * `data.team == null`        → halt exit 2 (team unreachable).
+#   * `data.project == null`     → halt exit 2 (project unreachable).
+#   * `project.teams.nodes[].id` does NOT contain `team.id` →
+#     halt exit 2 (project does not belong to team).
+#
+# On success populates `INSTALL_SESSION_SELECTED_TEAM_*` and
+# `INSTALL_SESSION_SELECTED_PROJECT_*` directly (skips S3 + S4 +
+# pickers).
+#
+# Phase 2 status: STUB. Signature + arg validation wired. Full
+# GraphQL query + null/mismatch validation lands in Phase 4 task T248
+# (US2 — CI / scripted install). Bats tests (T245) drive the failure
+# modes.
+# -----------------------------------------------------------------------------
+install::quick_validate_binding() {
+    local team_uuid="${1:?install::quick_validate_binding: team_uuid required}"
+    local project_uuid="${2:?install::quick_validate_binding: project_uuid required}"
+
+    # Phase 2 stub: the full validation query lands in Phase 4 task
+    # T248. For now, accept the inputs verbatim so the helper exists.
+    INSTALL_SESSION_SELECTED_TEAM_ID="$team_uuid"
+    INSTALL_SESSION_SELECTED_PROJECT_ID="$project_uuid"
+    return 0
 }
 
 # =============================================================================
