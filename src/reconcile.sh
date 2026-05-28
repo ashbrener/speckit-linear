@@ -1413,7 +1413,7 @@ reconcile::query_issue_blocks() {
     local response
     response="$(graphql::query "$query" "$vars")"
     printf '%s' "$response" \
-        | jq -c '[.data.issue.relations.nodes[].relatedIssue.id]'
+        | jq -c '[(.data.issue.relations.nodes // [])[].relatedIssue.id]'
 }
 
 # reconcile::query_existing_comment_body <issue_id> <marker_prefix>
@@ -1658,7 +1658,7 @@ reconcile::resolve_or_archive_duplicates() {
         local filtered_labels
         filtered_labels="$(printf '%s' "$labels_response" | jq -c \
             --arg drop "$spec_label" \
-            '[.data.issue.labels.nodes[].name | select(. != $drop)]')"
+            '[(.data.issue.labels.nodes // [])[].name | select(. != $drop)]')"
         # We can't pass labels by name to issueUpdate (it wants IDs);
         # since the goal here is purely to break the speckit-spec
         # lookup, the safer move is to remove just that label via the
@@ -1855,7 +1855,7 @@ reconcile::sync_spec_issue() {
 
     local current_labels
     current_labels="$(printf '%s' "$current_response" \
-        | jq -c '[.data.issue.labels.nodes[].name]')"
+        | jq -c '[(.data.issue.labels.nodes // [])[].name]')"
 
     # Compute the desired description. The bridge owns the full body
     # (FR-004, FR-016): prior description content is discarded and the
@@ -2166,7 +2166,7 @@ reconcile::sync_task_phase_subissues() {
             cur_title="$(printf '%s' "$sub_response" | jq -r '.data.issue.title // ""')"
             cur_desc="$(printf '%s' "$sub_response" | jq -r '.data.issue.description // ""')"
             cur_state="$(printf '%s' "$sub_response" | jq -r '.data.issue.state.id // ""')"
-            cur_labels="$(printf '%s' "$sub_response" | jq -c '[.data.issue.labels.nodes[].name]')"
+            cur_labels="$(printf '%s' "$sub_response" | jq -c '[(.data.issue.labels.nodes // [])[].name]')"
             cur_estimate="$(printf '%s' "$sub_response" | jq -r '.data.issue.estimate // ""')"
 
             # Desired label set: preserve operator labels, ensure
