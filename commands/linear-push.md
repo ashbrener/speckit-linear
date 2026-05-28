@@ -9,7 +9,7 @@ arguments:
     description: log mutations without executing them
     optional: true
   - name: retroactive
-    description: first-time-adoption mode (FR-014) — bypasses the FR-025 write-authority gate so every spec is reconciled regardless of the current branch; implies --all
+    description: "DEPRECATED (Constitution Principle IV v2.0.0 / spec 003 FR-061) — first-time-adoption mode (FR-014); historically bypassed the FR-025 write-authority gate. Once spec 003 lands this becomes a no-op alias because writing from any branch is the default. Implies --all"
     optional: true
 ---
 
@@ -28,9 +28,15 @@ relations, clarify-session comments, and lifecycle-phase labels.
 **Direction**: one-way, filesystem → Linear (Principle I).
 **Semantics**: idempotent (Principle II — zero-churn on unchanged
 state, SC-002).
-**Authority**: only mutates Linear for specs whose feature branch is
-checked out in this worktree (Principle IV / FR-025); other specs
-enter read-only display mode (FR-026).
+**Authority**: drift-aware (Constitution Principle IV v2.0.0). Any
+worktree may write a spec's Linear state; the filesystem is the
+authority. On backward-drift (Linear ahead of disk) the bridge
+surfaces a warning and lets the operator decide — it does not refuse
+the write. Spec 003 (`003-drift-aware-authority`, FR-051..FR-064)
+implements this and SUPERSEDES the v1.0.0 FR-025 branch-gate. Until
+spec 003 lands, the shipped reconciler still applies the FR-025 gate
+(use `retroactive` to bypass it for first-time adoption). FR-026's
+surfacing obligation is retained throughout.
 **Layer**: this command implements Layer D. The GitHub Action template
 that ships with `/spec-kit-linear-install` implements Layer E and is
 out of scope here.
@@ -51,7 +57,7 @@ the operator-facing end-to-end walkthrough see
 |---|---|---|
 | `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Reconcile only this spec. |
 | `dry-run` | false | Log every mutation that WOULD fire; issue none. Safe inspection mode. |
-| `retroactive` | false | First-time-adoption mode (FR-014 / User Story 5). Bypasses the FR-025 write-authority gate so every enumerated spec is reconciled regardless of the worktree's current branch — intended for the first reconcile after installing the bridge into a repo with existing specs. After the first successful retroactive reconcile, drop the flag and rely on per-branch reconciles. Implies `--all`; suppresses "skipped because non-authoritative" warnings and surfaces a single aggregate INFO row naming the bypass count. |
+| `retroactive` | false | **DEPRECATED** (Constitution Principle IV v2.0.0 / spec 003 FR-061). First-time-adoption mode (FR-014 / User Story 5). In the shipped (pre-spec-003) reconciler it bypasses the FR-025 write-authority gate so every enumerated spec is reconciled regardless of the worktree's current branch — intended for the first reconcile after installing the bridge into a repo with existing specs. Implies `--all`; suppresses "skipped because non-authoritative" warnings and surfaces a single aggregate INFO row naming the bypass count. Once spec 003's drift-aware model lands, write-from-any-branch is the default and this flag becomes a no-op alias (it emits one deprecation INFO row and changes nothing); it is removed in a later release. |
 
 Exactly one of `spec` or "all specs" is in effect — if `spec` is not
 passed, the reconciler walks every `specs/NNN-*/` directory in the
@@ -103,10 +109,15 @@ Default: `--all`.
      missing/malformed UUIDs it halts with exit 2 and an
      operator-actionable diagnostic (Principle VIII).
    - Enumerates the requested specs and processes each:
-     - Gates writes on the worktree's branch matching `<NNN>-…`
-       (Principle IV / FR-025). Non-authoritative invocations enter
-       a read-only display path and surface the spec's current
-       Linear state without mutation.
+     - Applies write authority per Constitution Principle IV. Under
+       v2.0.0 (drift-aware, spec 003) any worktree may write; the
+       bridge computes a backward-drift signal and surfaces a warning
+       when Linear is ahead, but does not refuse the write. Until spec
+       003 lands, the shipped reconciler still gates writes on the
+       worktree's branch matching `<NNN>-…` (legacy FR-025), with
+       non-authoritative invocations taking a read-only display path;
+       `--retroactive` bypasses that legacy gate. Either way the
+       spec's current Linear state is surfaced (FR-026 / FR-060).
      - Infers the lifecycle phase from artifacts on disk
        (`spec.md` → `clarifying` → `planning` → `tasking` →
        `red_team` → `implementing` → `analyzing` → `ready_to_merge` →
@@ -223,13 +234,14 @@ logs:
   spec.md; not overwriting` — FR-015 + contracts §9. Hand-edits to
   comments are preserved; the reconciler does not silently overwrite.
 - `non-authoritative worktree (current branch '<branch>'); read-only
-  mode` — Principle IV / FR-025. This is the expected behaviour from
-  `main` or an unrelated branch; the operator switches worktrees to
-  re-enable write authority. Suppressed by `retroactive=true`, which
-  also bypasses the gate so writes proceed for every spec (FR-014);
-  the bypass surfaces as a single aggregate row in the summary
-  (`retroactive: <N> spec(s) reconciled despite non-authoritative
-  worktree …`).
+  mode` — legacy FR-025 (shipped, pre-spec-003) behaviour from `main`
+  or an unrelated branch; the operator switches worktrees or passes
+  `retroactive=true` to bypass the gate (`retroactive: <N> spec(s)
+  reconciled despite non-authoritative worktree …`). Under Principle
+  IV v2.0.0 (drift-aware, spec 003) this is REPLACED by a
+  `backward-drift for spec NNN — Linear is ahead` WARNING row that
+  surfaces the drift but does not block the write; the operator
+  decides (interactive prompt, or `--on-drift` non-interactively).
 - `linear-config.yml not found at <path>; run
   /spec-kit-linear-install` — FR-022 halt. Exit code 2.
 
@@ -260,11 +272,11 @@ This command implements (in whole or in part):
 - **FR-007** — inter-task-phase blocking relations.
 - **FR-008 / FR-015** — clarify-session comments (operator escape hatch).
 - **FR-012 / FR-013** — lifecycle-phase inference and `phase:*` label hygiene.
-- **FR-014** — retroactive first-time-adoption mode.
+- **FR-014** — retroactive first-time-adoption mode (deprecated to a no-op alias by spec 003 FR-061).
 - **FR-016 / FR-017** — unidirectional sync; no PR mutations.
 - **FR-022** — halt with operator-actionable diagnostic on unseeded workspace.
 - **FR-023 / FR-024** — structured summary block; named warnings.
-- **FR-025 / FR-026** — per-spec write-authority gate; non-authoritative read-only mode.
+- **FR-025 / FR-026** — write authority. v1.0.0 per-spec branch-gate (FR-025) SUPERSEDED by Constitution Principle IV v2.0.0 / spec 003 drift-aware model (FR-051..FR-060); FR-026's current-state surfacing is retained (FR-060).
 - **FR-030** — gh CLI primary / git-only fallback for PR-state hints.
 - **FR-031 / FR-033** — auto-fire from `after_*` hooks and local git hooks.
 - **FR-034** — operator assignee captured into the memory block.

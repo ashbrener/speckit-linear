@@ -22,17 +22,21 @@ repo, never mutates Linear.
 
 Inspect, do not mutate. For each `specs/NNN-feature/` in the consumer
 repo, surface the disk-side facts, the Linear-side facts, the drift
-between them, and whether the current worktree holds write-authority
-(per FR-025) for that spec.
+between them, and the write-authority / drift posture for that spec.
+(Under Constitution Principle IV v2.0.0 — drift-aware, spec 003 — the
+relevant signal is backward-drift, not the legacy FR-025 branch-gate;
+see the Authority status field below.)
 
 **Direction**: read-only. Talks to Linear ONLY via `graphql::query`;
 issues zero `issueCreate` / `issueUpdate` / `commentCreate` / any other
 mutation. Even from an authoritative worktree, this command MUST NOT
 write — it is an inspect tool, full stop.
 **Authority**: not gated. Runs from any worktree, on any branch
-(detached HEAD included). Reports authority status PER SPEC so the
+(detached HEAD included). Reports the per-spec drift posture so the
 operator knows whether a subsequent `/speckit.linear.push` from the
-current worktree would mutate Linear or be silently skipped per FR-026.
+current worktree would write cleanly or hit a backward-drift warning
+(Principle IV v2.0.0 / spec 003). Current Linear state is always
+surfaced (FR-026 / FR-060).
 **Layer**: out-of-band inspect command, not part of Layer D's write
 cycle. Safe to run during a deploy, during a CI build, during a merge.
 
@@ -110,8 +114,13 @@ Default: `--all --human`.
        differs, branch differs from the memory block, last-touched is
        older than Linear's last activity (FR-026 "Linear knows
        something disk doesn't"), task checklist count differs.
-     - **Authority status** — Yes when `git_helpers::is_authoritative_for_spec`
-       returns true for the spec; No otherwise (FR-025).
+     - **Authority status** — drift posture per Principle IV v2.0.0
+       (spec 003): reports whether writing this spec from the current
+       worktree would be a clean forward write or trigger a
+       backward-drift warning (Linear ahead of disk). In the shipped
+       (pre-spec-003) build this field reflects the legacy
+       `git_helpers::is_authoritative_for_spec` branch-gate (Yes/No);
+       both are superseded by the drift-aware signal once spec 003 lands.
    - Renders the per-spec report on stdout (JSON array or human
      table) and the structured summary on stderr.
 
@@ -231,6 +240,6 @@ This command implements (in whole or in part):
 
 - **FR-022** — config-load halt with operator-actionable remediation.
 - **FR-023** — structured `summary::emit` block on stderr.
-- **FR-025** — per-spec write-authority status surfaced in the report.
-- **FR-026** — non-authoritative read-only behaviour; drift surfaced without write attempt.
+- **FR-025** — per-spec write-authority status surfaced in the report (the v1.0.0 branch-gate is SUPERSEDED by Constitution Principle IV v2.0.0 / spec 003 drift-aware signal, FR-051..FR-060).
+- **FR-026 / FR-060** — read-only inspection; current Linear state and drift surfaced without any write attempt.
 - **FR-004b** — `speckit-spec:NNN` label is the lookup key for the Linear-side fetch.

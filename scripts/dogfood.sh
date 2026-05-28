@@ -41,6 +41,11 @@ readonly DEFAULT_TEAM_UUID="6ab43461-6d22-4f02-bb1e-0be9859c7997"
 readonly DEFAULT_REPORT_PATH="validation/dogfood-001.md"
 readonly LINEAR_GRAPHQL_ENDPOINT="https://api.linear.app/graphql"
 
+# Report path for the spec-002 interactive-discovery flow (T262).
+# Mirrors validation/dogfood-001.md per Assumption A12 in
+# specs/002-install-ergonomics/tasks.md.
+readonly DEFAULT_INTERACTIVE_REPORT_PATH="validation/dogfood-002.md"
+
 # Required preflight binaries. Bash 4+ is checked separately (version-sensitive).
 readonly -a REQUIRED_BINARIES=(curl jq git gh)
 
@@ -54,8 +59,28 @@ DRY_RUN=0
 SKIP_INSTALL=0
 SKIP_SEED=0
 
+# T262 — spec-002 interactive-discovery flow. When INTERACTIVE_FLOW=1
+# the script runs ONLY the interactive block (it does not chain the
+# original install/seed/reconcile sequence) and writes to
+# INTERACTIVE_REPORT_PATH. Driven by --interactive-flow.
+INTERACTIVE_FLOW=0
+INTERACTIVE_REPORT_PATH="$DEFAULT_INTERACTIVE_REPORT_PATH"
+# Path to the SANDBOX consumer repo the interactive flow installs into.
+# MUST be a separate checkout from the bridge (FR-046 self-install guard
+# refuses source == target). Empty → the script provisions a throwaway
+# temp repo under $TMPDIR and tears it down on exit.
+SANDBOX_REPO=""
+# Pre-existing Project UUID to attach to (drives the "pick existing
+# project" branch). Empty → the flow drives the "Create new project"
+# picker tail instead.
+INTERACTIVE_PROJECT_UUID=""
+
 REPO_ROOT=""
 REPORT_ABS_PATH=""
+
+# Temp sandbox bookkeeping (populated by run_interactive_flow when no
+# --sandbox-repo is supplied; cleaned up via the EXIT trap).
+INTERACTIVE_SANDBOX_TMP=""
 
 # Exit codes from each step (default 0 = skipped/clean).
 INSTALL_EXIT=0
@@ -104,6 +129,25 @@ OPTIONS
                     workspace per FR-021; re-running is a safe no-op but
                     can be skipped for speed).
   --report PATH     Override the report path. Default: validation/dogfood-001.md
+  --interactive-flow
+                    Run spec 002's INTERACTIVE discovery install instead of
+                    the original install->seed->reconcile chain (T262). Drives
+                    src/install.sh --dev with piped-stdin operator picks (API
+                    key already in .env, team pick, project pick / create-new)
+                    against a SANDBOX consumer repo SEPARATE from the bridge's
+                    own checkout — FR-046's self-install guard refuses
+                    source == target (tasks.md Assumption A12). Writes to
+                    validation/dogfood-002.md unless --report overrides.
+  --sandbox-repo DIR
+                    Consumer repo the --interactive-flow installs into. MUST
+                    be a separate checkout from this bridge. When omitted the
+                    script provisions a throwaway git repo under TMPDIR and
+                    removes it on exit. Only meaningful with --interactive-flow.
+  --interactive-project UUID
+                    With --interactive-flow, attach to this existing Project
+                    UUID (drives the "pick existing project" branch, FR-040).
+                    When omitted the flow drives the "Create new project"
+                    picker tail (FR-041) so the projectCreate path is exercised.
   --help            Print this help and exit.
 
 EXIT CODES
@@ -185,6 +229,32 @@ parse_args() {
                 REPORT_PATH="${1#--report=}"
                 shift
                 ;;
+            --interactive-flow)
+                INTERACTIVE_FLOW=1
+                shift
+                ;;
+            --sandbox-repo)
+                if (( $# < 2 )); then
+                    die 2 "--sandbox-repo requires a DIR argument"
+                fi
+                SANDBOX_REPO="$2"
+                shift 2
+                ;;
+            --sandbox-repo=*)
+                SANDBOX_REPO="${1#--sandbox-repo=}"
+                shift
+                ;;
+            --interactive-project)
+                if (( $# < 2 )); then
+                    die 2 "--interactive-project requires a UUID argument"
+                fi
+                INTERACTIVE_PROJECT_UUID="$2"
+                shift 2
+                ;;
+            --interactive-project=*)
+                INTERACTIVE_PROJECT_UUID="${1#--interactive-project=}"
+                shift
+                ;;
             --help|-h)
                 usage
                 exit 0
@@ -207,6 +277,12 @@ resolve_repo_root() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     REPO_ROOT="$(cd "${script_dir}/.." && pwd)"
+
+    # In --interactive-flow mode, the default report target is
+    # validation/dogfood-002.md (A12). An explicit --report still wins.
+    if (( INTERACTIVE_FLOW == 1 )) && [[ "$REPORT_PATH" == "$DEFAULT_REPORT_PATH" ]]; then
+        REPORT_PATH="$INTERACTIVE_REPORT_PATH"
+    fi
 
     # REPORT_PATH is interpreted relative to REPO_ROOT unless absolute.
     if [[ "$REPORT_PATH" = /* ]]; then
@@ -403,6 +479,32 @@ write_header() {
     fi
 
     mkdir -p "$(dirname "$REPORT_ABS_PATH")"
+
+    if (( INTERACTIVE_FLOW == 1 )); then
+        cat > "$REPORT_ABS_PATH" <<EOF
+# Dogfood report: spec-kit-linear interactive install (spec 002 — T262)
+
+**Run**: ${timestamp}
+**Operator**: ${operator_name} <${operator_email}>
+**Workspace**: OSH-INFRA
+**Team UUID**: ${TEAM_UUID}
+**Repo**: ashbrener/spec-kit-linear
+**Branch**: ${branch}
+**Bridge commit**: ${commit}
+**Flags**: dry-run=${DRY_RUN} interactive-flow=1 sandbox-repo=${SANDBOX_REPO:-<temp>}
+
+## Overview
+
+This report captures spec 002's interactive discovery install: driving
+\`src/install.sh\`'s prompt state machine (API key → viewer → team pick →
+project pick / create-new → seed prompt) with piped-stdin operator picks
+against a SANDBOX consumer repo that is a SEPARATE checkout from the
+bridge (FR-046 self-install guard forbids source == target — tasks.md
+Assumption A12). Findings are appended by \`scripts/dogfood.sh\`.
+
+EOF
+        return 0
+    fi
 
     cat > "$REPORT_ABS_PATH" <<EOF
 # Dogfood report: spec-kit-linear -> OSH-INFRA (T077)
@@ -821,6 +923,33 @@ write_summary() {
         overall="$(status_emoji_for fail)"
     fi
 
+    if (( INTERACTIVE_FLOW == 1 )); then
+        # The interactive flow tracks its own outcome inline via
+        # write_step_outcome; reaching here means it did not exit non-zero.
+        {
+            printf '## Summary\n\n'
+            printf '| Field | Value |\n'
+            printf '|---|---|\n'
+            printf '| Overall | %s |\n' "$(status_emoji_for ok)"
+            printf '| Total wall-clock | %ss |\n' "$total"
+            printf '| Mode | interactive discovery (T262) |\n'
+            printf '| Sandbox repo | %s |\n' "${SANDBOX_REPO:-<temp> (provisioned + torn down)}"
+            printf '\n'
+            if [[ -n "$WARNINGS" ]]; then
+                printf '### Warnings\n\n'
+                local iw
+                while IFS= read -r iw; do
+                    [[ -z "$iw" ]] && continue
+                    printf '- %s\n' "$iw"
+                done <<< "$WARNINGS"
+                printf '\n'
+            fi
+            printf '## Rough edges & follow-ups\n\n'
+            printf '<!-- Operator-authored after run: SC-009 2-min budget, SC-010 zero-UUID surface, picker UX. -->\n'
+        } >> "$REPORT_ABS_PATH"
+        return 0
+    fi
+
     {
         printf '## Summary\n\n'
         printf '| Field | Value |\n'
@@ -868,6 +997,203 @@ write_failure_section() {
     } >> "$REPORT_ABS_PATH"
 }
 
+# =============================================================================
+# T262 — spec-002 interactive-discovery flow
+#
+# Drives src/install.sh's interactive state machine (S1 API key -> S2 viewer
+# -> S3 team pick -> S4 project pick / S5 create-new -> T063 seed prompt) by
+# piping the operator's picks on stdin against a SANDBOX consumer repo that is
+# a SEPARATE checkout from the bridge. This separation is mandatory: FR-046's
+# self-install guard (install::detect_self_install) halts exit 2 when SOURCE
+# (the bridge) == TARGET, so the dogfood MUST install into another repo
+# (tasks.md Assumption A12 + plan.md A12).
+#
+# Like the rest of dogfood.sh this is operator-run, NOT a CI step. The live
+# install only fires when neither --dry-run nor --skip-install is set; under
+# --dry-run the block reports the planned invocation + scripted stdin and
+# performs NO Linear mutation, so CI / `bash -n` / shellcheck can exercise the
+# code path without a key.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# cleanup_interactive_sandbox
+#   EXIT-trap callback. Removes the throwaway sandbox repo the flow created
+#   (only when the script provisioned it — an operator-supplied
+#   --sandbox-repo is never deleted; Principle VIII operator consent).
+# -----------------------------------------------------------------------------
+cleanup_interactive_sandbox() {
+    if [[ -n "$INTERACTIVE_SANDBOX_TMP" && -d "$INTERACTIVE_SANDBOX_TMP" ]]; then
+        rm -rf "$INTERACTIVE_SANDBOX_TMP"
+        log "removed throwaway sandbox repo at ${INTERACTIVE_SANDBOX_TMP}"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# provision_sandbox_repo
+#   Resolve the sandbox consumer repo the interactive install targets.
+#   - --sandbox-repo DIR supplied: canonicalise it, assert it is NOT the
+#     bridge root (mirror of FR-046 — fail before install rather than rely on
+#     the guard), and reuse it as-is.
+#   - omitted: mkdir a throwaway repo under TMPDIR, `git init` it, and lay
+#     down the minimal `.specify/` skeleton a consumer repo needs so the
+#     install's preflight (`.specify/` present) passes.
+#   Echoes the absolute sandbox path on stdout.
+# -----------------------------------------------------------------------------
+provision_sandbox_repo() {
+    local sandbox
+    if [[ -n "$SANDBOX_REPO" ]]; then
+        if [[ ! -d "$SANDBOX_REPO" ]]; then
+            die 2 "--sandbox-repo path does not exist: ${SANDBOX_REPO}"
+        fi
+        sandbox="$(cd "$SANDBOX_REPO" && pwd -P)"
+        # FR-046 mirror: refuse source == target before invoking install.
+        if [[ "$sandbox" == "$REPO_ROOT" ]]; then
+            die 2 "--sandbox-repo resolves to the bridge's own checkout (${REPO_ROOT}); FR-046 self-install guard forbids source == target. Point --sandbox-repo at a separate consumer repo."
+        fi
+        printf '%s\n' "$sandbox"
+        return 0
+    fi
+
+    # No sandbox supplied — provision a throwaway under TMPDIR.
+    local tmp_base="${TMPDIR:-/tmp}"
+    INTERACTIVE_SANDBOX_TMP="$(mktemp -d "${tmp_base%/}/dogfood-002-sandbox.XXXXXX")"
+    sandbox="$(cd "$INTERACTIVE_SANDBOX_TMP" && pwd -P)"
+    (
+        cd "$sandbox" || exit 5
+        git init --quiet
+        # Minimal consumer-repo skeleton so install preflight's `.specify/`
+        # check passes. A real `specify init` would lay down more; the
+        # install only requires the directory to exist + be writable.
+        mkdir -p .specify/extensions
+        printf 'extensions: {}\n' > .specify/extensions.yml
+        printf '# dogfood-002 sandbox consumer repo\n' > README.md
+        git add -A >/dev/null 2>&1 || true
+        git -c user.email=dogfood@example.com -c user.name=dogfood \
+            commit --quiet -m "chore: dogfood-002 sandbox skeleton" >/dev/null 2>&1 || true
+    )
+    log "provisioned throwaway sandbox repo at ${sandbox}"
+    printf '%s\n' "$sandbox"
+}
+
+# -----------------------------------------------------------------------------
+# build_interactive_stdin
+#   Compose the newline-separated operator picks fed to src/install.sh's
+#   prompts, in the exact order the install reads them:
+#     1. API key prompt (S1) — SKIPPED here: per A12 the key is already in the
+#        sandbox's .env (priority 2 of FR-037), so install::prompt_for_api_key
+#        returns before reading stdin. No line emitted.
+#     2. Team pick (S3, FR-039) — `1` selects the first team. A single-team
+#        workspace auto-picks and reads NO line; we still emit `1` because a
+#        surplus stdin line is harmless (the next reader consumes it).
+#     3a. Existing-project attach (S4, FR-040): omitted here — the
+#         create-new path is the default so the projectCreate mutation
+#         (FR-041) is exercised. When --interactive-project is set the
+#         project picker is short-circuited by --project on the CLI, so no
+#         project-pick line is emitted either way.
+#     3b. Create-new project (S5, FR-041): pick the "Create new project"
+#         tail, accept the repo-basename default name (blank line), and
+#         confirm with `Y`.
+#     4. Seed prompt (T063, FR-022): `n` defers the inline seed so the
+#        dogfood does not mutate workspace state during the picker exercise;
+#        dogfood-001 owns the seed+reconcile leg.
+#   The T064 Action prompt is removed from the stdin sequence by passing
+#   --no-action on the CLI (keeps the scripted stdin deterministic).
+# -----------------------------------------------------------------------------
+build_interactive_stdin() {
+    if [[ -n "$INTERACTIVE_PROJECT_UUID" ]]; then
+        # --project short-circuits S4; only the team pick + seed answer remain.
+        printf '1\n'      # S3 team pick
+        printf 'n\n'      # T063 seed prompt: defer
+    else
+        printf '1\n'      # S3 team pick
+        printf '1\n'      # S4: select the "Create new project" tail
+        printf '\n'       # S5: accept repo-basename default project name
+        printf 'Y\n'      # S5: confirm projectCreate
+        printf 'n\n'      # T063 seed prompt: defer
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# run_interactive_flow
+#   The T262 block. Provisions/validates the sandbox repo, composes the
+#   install invocation + scripted stdin, and (live runs only) drives the
+#   interactive install, capturing the transcript into the report.
+# -----------------------------------------------------------------------------
+run_interactive_flow() {
+    local sandbox
+    sandbox="$(provision_sandbox_repo)"
+
+    write_section_header 1 "Interactive discovery install (spec 002 — T262)"
+
+    # Compose the install flags. --dev installs from the bridge checkout;
+    # --no-action removes the T064 prompt from the stdin sequence. --team is
+    # passed so the dogfood targets the known OSH-INFRA team deterministically
+    # while STILL exercising the project picker / create-new path. When
+    # --interactive-project is set, --project short-circuits S4 (FR-044).
+    local -a install_flags
+    install_flags=(--dev "$REPO_ROOT" --team "$TEAM_UUID" --no-action)
+    if [[ -n "$INTERACTIVE_PROJECT_UUID" ]]; then
+        install_flags+=(--project "$INTERACTIVE_PROJECT_UUID")
+    fi
+
+    local install_cmd
+    install_cmd="bash ${REPO_ROOT}/src/install.sh ${install_flags[*]}"
+
+    local stdin_script
+    stdin_script="$(build_interactive_stdin)"
+
+    {
+        printf 'Sandbox consumer repo: %s%s%s\n\n' '`' "$sandbox" '`'
+        printf 'Command (run from the sandbox repo cwd):\n\n'
+        printf '%s\n' '```bash'
+        printf '%s\n' "$install_cmd"
+        printf '%s\n\n' '```'
+        printf 'Scripted operator picks piped on stdin (FR-037/039/040/041/022):\n\n'
+        printf '%s\n' '```text'
+        printf '%s\n' "$stdin_script"
+        printf '%s\n\n' '```'
+    } >> "$REPORT_ABS_PATH"
+
+    if (( DRY_RUN == 1 )); then
+        warn "interactive-flow under --dry-run: NOT invoking src/install.sh (no live install / no Linear mutation). The planned command + scripted stdin are recorded above."
+        {
+            printf '_Skipped the live install under --dry-run. '
+            printf 'Re-run without --dry-run (and with a sandbox repo carrying '
+            printf 'LINEAR_API_KEY in its .env) to drive the interactive flow._\n\n'
+        } >> "$REPORT_ABS_PATH"
+        log "interactive-flow dry-run: live install skipped"
+        return 0
+    fi
+
+    {
+        printf 'Live transcript:\n\n'
+        printf '%s\n' '```text'
+    } >> "$REPORT_ABS_PATH"
+
+    local start_ts end_ts duration exit_code
+    start_ts="$(date +%s)"
+    set +e
+    (
+        cd "$sandbox" \
+            && build_interactive_stdin | bash "${REPO_ROOT}/src/install.sh" "${install_flags[@]}"
+    ) >> "$REPORT_ABS_PATH" 2>&1
+    exit_code=$?
+    set -e
+    end_ts="$(date +%s)"
+    duration=$(( end_ts - start_ts ))
+
+    printf '```\n' >> "$REPORT_ABS_PATH"
+    write_step_outcome "$exit_code" "$duration"
+
+    if (( exit_code != 0 )); then
+        write_failure_section "Interactive discovery install (T262)" "$exit_code" \
+            "Inspect the transcript above. Exit 2 is usually a missing LINEAR_API_KEY in the sandbox repo's .env (S1/FR-037) or the FR-046 self-install guard firing (sandbox == bridge). Exit 1 is a projectCreate failure (FR-041) — Linear surfaced the verbatim error. Confirm the sandbox repo carries .env with a valid key and is a SEPARATE checkout from the bridge."
+        log "interactive-flow install failed (exit ${exit_code})"
+        exit 3
+    fi
+    log "interactive-flow install ok in ${duration}s"
+}
+
 # -----------------------------------------------------------------------------
 # main
 # -----------------------------------------------------------------------------
@@ -877,6 +1203,16 @@ main() {
     load_env_file
 
     TOTAL_START_TS="$(date +%s)"
+
+    if (( INTERACTIVE_FLOW == 1 )); then
+        trap cleanup_interactive_sandbox EXIT
+        write_header
+        preflight
+        run_interactive_flow
+        write_summary
+        log "dogfood report written to ${REPORT_ABS_PATH}"
+        return 0
+    fi
 
     # Truncate + header BEFORE preflight so the preflight section has a
     # file to append to.

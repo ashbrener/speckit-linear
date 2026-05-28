@@ -43,10 +43,10 @@ write is the `linear-config.yml` update, which is also bridge-owned
 (Principle I — filesystem-is-truth holds: the operator never has to
 hand-edit the UUIDs).
 
-**Authority**: write-authority gate does NOT apply here — the seed is
-workspace-level configuration, not per-spec mutation, so any worktree
-that has the bridge installed can run it (Principle IV scopes only
-spec-level writes).
+**Authority**: write-authority considerations do NOT apply here — the
+seed is workspace-level configuration, not per-spec mutation, so any
+worktree that has the bridge installed can run it (Principle IV —
+drift-aware in v2.0.0 — scopes only spec-level writes).
 
 The deterministic work happens in `src/seed.sh`; this command is the
 AI-agent entry point that runs the shell and surfaces its output. The
@@ -163,7 +163,9 @@ Default: read team from `linear-config.yml`; full write path.
      `default_state_uuids` map (per `contracts/linear-graphql-mutations.md`
      §4.3 — required for task-phase sub-issue states).
    - For each of the eighteen workspace-scoped labels (nine `phase:*`
-     plus nine `task-phase:N` covering up to 9 task phases per spec),
+     plus nine `task-phase:N` bootstrapping `task-phase:1..task-phase:9`;
+     any `task-phase:N` for N ≥ 10 is supported at reconcile time via
+     lazy-create, mirroring FR-004b's `speckit-spec:NNN` precedent),
      queries `issueLabels(filter: { name })` and `issueLabelCreate`s
      on a 0-match. Same idempotency semantics as workflow states.
      The `speckit-spec:NNN` labels are NOT seeded — those are minted
@@ -237,7 +239,10 @@ The eighteen workspace labels are the two families:
   filter-by-phase aids that mirror each spec Issue's workflow state.
 - `task-phase:1` … `task-phase:9` — the per-task-phase tags
   attached to each `## Phase N: <Name>` sub-issue. Nine entries
-  covers the bridge's hard ceiling of nine task phases per spec.
+  are bootstrapped at seed time; specs whose `tasks.md` declares
+  10+ phases trigger lazy-create of `task-phase:10..N` at reconcile
+  time (`src/reconcile.sh`), mirroring FR-004b's `speckit-spec:NNN`
+  precedent. The seed step itself stays fixed at 1..9 by design.
 
 Default-state capture (FR-005 / contracts §4.3) reads — but never
 creates — three additional UUIDs from the team's stock workflow:

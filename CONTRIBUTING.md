@@ -64,12 +64,12 @@ Per [`.specify/extensions.yml`](./.specify/extensions.yml), the following hooks 
 
 ## Constitution gates
 
-Constitution v1.0.0 ratifies 8 principles:
+Constitution v2.0.0 ratifies 8 principles:
 
 1. Filesystem Is The Single Source of Truth
 2. Reconcile, Never Event-Push
 3. Layered Idempotency (D + E)
-4. Write-Authority Follows The Worktree
+4. Write-Authority Follows The Filesystem (Drift-Aware)
 5. UUID-Based Binding, Per-Repo Config
 6. OAuth-First, Keys-At-The-Edges
 7. Memory-Just-Works, Escape Hatches Beside It
