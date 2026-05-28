@@ -62,6 +62,8 @@ Or install from a local checkout (symlinks rather than copies, so your local edi
 specify extension add /path/to/spec-kit-linear --dev
 ```
 
+Run this from a **separate consumer repo**, not from inside the bridge's own checkout. The install detects source-equals-target and halts with exit 2 (FR-046) rather than copy the bridge into itself.
+
 Once the extension is listed in the catalog, the shorter form will work:
 
 ```bash
@@ -69,6 +71,8 @@ specify extension add linear
 ```
 
 Either path registers the `after_*` hooks into your project's `.specify/extensions.yml`, drops local git hooks into `.git/hooks/`, and scaffolds `.specify/extensions/linear/linear-config.yml`.
+
+If the install reports a vendored `.git/` warning under `.specify/extensions/linear/`, run `rm -rf .specify/extensions/linear/.git` and re-run the install (FR-049). The bridge does not auto-delete that directory — operator consent is required.
 
 ## Adopt — the 3 steps every project takes
 

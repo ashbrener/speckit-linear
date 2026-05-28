@@ -1,0 +1,17 @@
+{
+  "data": {
+    "projectCreate": {
+      "success": false,
+      "project": null
+    }
+  },
+  "errors": [
+    {
+      "message": "You do not have permission to create projects in this team.",
+      "extensions": {
+        "code": "FORBIDDEN",
+        "type": "authorization"
+      }
+    }
+  ]
+}

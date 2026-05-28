@@ -95,7 +95,12 @@ parity with other speckit extensions.
 1. **Compose the invocation.** Translate the user-facing arguments
    into `src/install.sh` flags:
    - `project=<UUID>` → `--project <UUID>`
-   - `auto-create=true` → `--auto-create`
+   - `auto-create=true` → `--auto-create` (soft-deprecated in v0.1.1;
+     the new interactive default flow's "Create new project" picker
+     option supersedes it — preserved bit-for-bit for CI / scripted
+     installs per
+     [`install-flags.md`](../specs/002-install-ergonomics/contracts/install-flags.md)
+     §2)
    - `team=<UUID>` → `--team <UUID>`
    - `non-interactive=true` → `--non-interactive` (also `--no-prompt`)
    - `with-action=true` → `--with-action`
@@ -108,46 +113,126 @@ parity with other speckit extensions.
    bash src/install.sh <flags>
    ```
 
-   The script:
-   - Emits the **dependency report** (FR-018b) to stderr. Each line
-     is one of:
-     - `✓ <label>  <detail>` — verified.
-     - `⚠ <label>  <detail>` — warning; install proceeds.
-     - `✗ <label>  <detail>` — hard error; install aborts with
-       exit 2 after the full report is printed (so the operator sees
-       every problem at once, not just the first).
-     The covered surfaces are: bash, curl, jq, git, gh (optional),
+   The script drives the discovery state machine (spec 002
+   [`data-model.md`](../specs/002-install-ergonomics/data-model.md)
+   §4):
+
+   - **S0 — safety guards.** Run
+     `install::detect_self_install` (FR-046) and
+     `install::detect_vendored_git` (FR-049). Source equals target →
+     halt exit 2 with the
+     [`install-flags.md`](../specs/002-install-ergonomics/contracts/install-flags.md)
+     §4 verbatim message. Vendored `.git/` present → emit a
+     `summary::add warned` row with the `rm -rf …` remediation and
+     continue (Principle VIII — operator consent; no auto-delete).
+   - **S0b — dependency report (FR-018b).** Emit each row as
+     `✓ <label>  <detail>` (verified), `⚠ <label>  <detail>`
+     (warning; install proceeds), or `✗ <label>  <detail>` (hard
+     error; install aborts with exit 2 after the full report is
+     printed). Covered surfaces: bash, curl, jq, git, gh (optional),
      `.mcp.json` Linear MCP entry, Linear MCP OAuth cache,
      `.specify/` layout, `.git/hooks/` writability, `.env`.
-   - Detects whether the target repo is the spec-kit-linear repo
-     itself (the **dogfood guard**, T048). When detected, the hook
-     entries are emitted with
-     `condition: "${SPECKIT_LINEAR_DOGFOOD_SAFE:-false}"` so they
-     don't auto-fire during the bridge's own development unless the
-     operator opts in by exporting that env var.
-   - Resolves the Linear **Team** + **Project** UUIDs:
-     - Non-interactive: trust `--team` + `--project` / `--auto-create`.
-     - Interactive: prompt the operator. The Project picker offers
-       `create` / `attach` / `rename` (default `create`).
-     - Note: actual GraphQL-driven Team/Project queries are
-       deferred to T077 dogfood; for Phase 4 the install records
-       operator-supplied UUIDs or a clearly-marked zero placeholder
-       that the operator must resolve before the first push.
-   - Copies `config-template.yml` into
-     `.specify/extensions/linear/linear-config.yml` (FR-002), substitutes the
-     resolved Team + Project UUIDs in place. `workflow_state_uuids`
+   - **S1 — API key resolution (FR-037).**
+     `install::prompt_for_api_key` walks the resolution order
+     per
+     [`install-prompts.md`](../specs/002-install-ergonomics/contracts/install-prompts.md)
+     §2:
+     1. `LINEAR_API_KEY` env var (highest precedence).
+     2. `.env` line at repo root.
+     3. Interactive `read -r -s` prompt with echo suppressed.
+     On (3) the install prompts "Save to .env?" (default Y); on
+     accept it appends `LINEAR_API_KEY=…` and ensures `.env` is in
+     `.gitignore`. Existing `.env` entries trigger the
+     `[overwrite/keep/abort]` triage prompt (§2.4 / spec.md Edge
+     Case 8). EOF on the key prompt halts with exit 2.
+   - **S2 — viewer verification (FR-038 / FR-048).**
+     `install::resolve_operator` issues exactly ONE
+     `viewer { id name email organization { name urlKey } }` query
+     per
+     [`install-discovery-graphql.md`](../specs/002-install-ergonomics/contracts/install-discovery-graphql.md)
+     §1. The same response feeds:
+     - The API-key-valid gate (`viewer == null` → halt exit 2 with
+       the "create a new key at
+       <https://linear.app/settings/api>" remediation).
+     - The `linear.operator.{user_id, name, email}` block in
+       `linear-config.yml` (FR-034).
+     - The `linear.workspace.{name, url_key}` block.
+     - The authorization for the next `teams` query (no second
+       round trip).
+   - **S3 — team discovery (FR-039).**
+     `install::discover_teams` issues `teams(first: 21)` (one over
+     the 20-shown ceiling — research.md §1 overflow probe).
+     `install::pick_team_interactively` then renders the numbered
+     `%2d) %-8s — %s` list and prompts. Behaviour matrix:
+     - 0 teams → halt exit 2 with the FR-039 / spec.md Edge Case 1
+       remediation.
+     - 1 team → auto-pick + surface row "Found 1 team accessible —
+       using <key> (<name>) (auto-picked)". No prompt.
+     - 2-20 teams → numbered list + `Pick a team [1-N]:` prompt.
+     - >20 teams → first 20 + warning row "and N-20 more not shown;
+       pass --team <UUID> to install non-interactively" (Clarifications
+       Q2 + spec.md Edge Case 2).
+
+     `--team <UUID>` short-circuits S3 entirely (FR-044 fast path).
+   - **S4 — project discovery (FR-040).**
+     `install::discover_projects` issues
+     `team(id).projects(first: 21)` with the operator-selected team's
+     UUID. `install::pick_project_interactively` renders the list with
+     "Create new project" ALWAYS appended as the final option (index
+     N+1; option `1)` when N==0). >20 projects → first 20 + Create-new
+     + warning row.
+
+     `--project <UUID>` short-circuits S4 entirely (FR-044 fast
+     path).
+   - **S5 — projectCreate branch (FR-041).** Fires only when the
+     operator picked "Create new project" at S4.
+     `install::run_create_project_branch`:
+     1. `install::prompt_new_project_name` — repo basename is the
+        default (plan.md A6).
+     2. Duplicate-name pre-check via
+        `install::_handle_duplicate_name` — on a hit, prompt
+        `[create-anyway/pick-existing/rename]` per
+        [`install-prompts.md`](../specs/002-install-ergonomics/contracts/install-prompts.md)
+        §5.3. `pick-existing` (default) attaches; `rename` loops back
+        to the name prompt; `create-anyway` proceeds to confirm.
+     3. Confirm prompt `Create new Linear Project "<name>" in
+        <key>? [Y/n] (default: Y)` (§5.4).
+     4. `install::create_linear_project` fires the `projectCreate`
+        mutation per
+        [`install-discovery-graphql.md`](../specs/002-install-ergonomics/contracts/install-discovery-graphql.md)
+        §4. On `success: true` the install surfaces the project URL
+        (no UUID per SC-010). On `success: false` it halts with exit
+        1 + the verbatim Linear error.
+   - **S6 — write linear-config.yml (FR-042).** Gate:
+     `selected_team_id` AND `selected_project_id` must both be
+     non-empty (the discovery flow guarantees this; the gate is a
+     defense-in-depth check). `install::write_config` copies
+     `config-template.yml` into
+     `.specify/extensions/linear/linear-config.yml` and substitutes
+     the resolved Team + Project UUIDs, the operator identity
+     (FR-034 → `linear.operator.*`), and the workspace name + URL
+     slug (FR-048 → `linear.workspace.*`). `workflow_state_uuids`
      remain zero — the seed step fills them.
-   - Registers each of the six `after_*` hooks under
-     `.specify/extensions.yml` per FR-031 / Principle VII. Each entry
-     points at `speckit.linear.push`, with `optional: false` and
-     `enabled: true`. Re-runs honour any pre-existing `enabled:
-     false` operator edit (Principle VII rule 1).
-   - Installs `post-checkout`, `post-commit`, `post-merge` git
-     hooks per FR-033. If a hook of the same name already exists
-     (non-bridge content), the install chains a marker block
-     (`# >>> spec-kit-linear hook begin (FR-033) >>>`) onto the end of
-     the existing hook rather than overwriting it. Re-installs are
-     idempotent — the marker is the detection signal.
+   - **S7 — hook registration (FR-031 + FR-033) AFTER write_config
+     (FR-043).**
+     - Detects whether the target repo is the spec-kit-linear repo
+       itself (the **dogfood guard**, T048). When detected, hook
+       entries are emitted with
+       `condition: "${SPECKIT_LINEAR_DOGFOOD_SAFE:-false}"` so they
+       don't auto-fire during the bridge's own development unless
+       the operator opts in by exporting that env var.
+     - Registers each of the six `after_*` hooks under
+       `.specify/extensions.yml` per FR-031 / Principle VII. Each
+       entry points at `speckit.linear.push`, with `optional: false`
+       and `enabled: true`. Re-runs honour any pre-existing
+       `enabled: false` operator edit (Principle VII rule 1).
+     - Installs `post-checkout`, `post-commit`, `post-merge` git
+       hooks per FR-033. If a hook of the same name already exists
+       (non-bridge content), the install chains a marker block
+       (`# >>> spec-kit-linear hook begin (FR-033) >>>`) onto the
+       end of the existing hook rather than overwriting it.
+       Re-installs are idempotent — the marker is the detection
+       signal.
    - **T063 — seed-state check (FR-022).** After resolving the Team
      UUID and writing `linear-config.yml`, the install inspects
      `linear.workflow_state_uuids`. If the map is absent or every
@@ -311,6 +396,20 @@ Selected named cases:
   — error (T064). The bridge's own checkout is incomplete; the
   template should ship at `EXTENSION_ROOT/templates/github-action.yml`.
   Fix: re-clone the bridge or pull a fresh release tag.
+- `source path equals target path` — error (FR-046). The operator
+  ran `bash src/install.sh --dev` from inside the bridge's own
+  checkout; the S0 self-install guard halts exit 2 before any
+  filesystem write per
+  [`install-flags.md`](../specs/002-install-ergonomics/contracts/install-flags.md)
+  §4. Fix: install into a different consumer repo (the documented
+  `--dev /path/to/spec-kit-linear` form from `README.md` runs from
+  the consumer-repo cwd, not from inside the bridge).
+- `vendored .git/ detected at <path>` — warning (FR-049). The
+  install source carries a `.git/` directory at
+  `.specify/extensions/linear/.git` — typical of spec-kit-CLI
+  `--dev` vendoring. Install proceeds; the next-steps block
+  surfaces the `rm -rf <path>` remediation. The bridge never
+  auto-deletes that directory (Principle VIII — operator consent).
 
 ## Related commands
 
@@ -358,3 +457,18 @@ This command implements (in whole or in part):
   GitHub Action).
 - **Principle VII** — re-runs preserve operator `enabled: false`
   edits on registered hooks.
+- **FR-046** — S0 self-install guard via
+  `install::detect_self_install` (`cd && pwd -P` canonicalisation,
+  no `realpath` dependency); halts exit 2 when SOURCE ==
+  TARGET. See
+  [`install-flags.md`](../specs/002-install-ergonomics/contracts/install-flags.md)
+  §4 for the verbatim message.
+- **FR-047** — operator-facing install commands documented in
+  [`README.md`](../README.md) §Install. The `--from
+  <archive-zip-URL>` form is the canonical pre-catalog path; the
+  `--dev <path>` form runs from a separate consumer repo (FR-046
+  bars source-equals-target).
+- **FR-049** — vendored `.git/` detection via
+  `install::detect_vendored_git`; warns in the dependency report
+  and the final summary's next-steps block, never auto-deletes
+  (Principle VIII).

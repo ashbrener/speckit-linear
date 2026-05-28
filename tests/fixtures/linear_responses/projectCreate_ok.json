@@ -1,0 +1,12 @@
+{
+  "data": {
+    "projectCreate": {
+      "success": true,
+      "project": {
+        "id": "97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080",
+        "name": "spec-kit-linear",
+        "url": "https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3"
+      }
+    }
+  }
+}
