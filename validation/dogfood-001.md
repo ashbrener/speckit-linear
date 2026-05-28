@@ -1,13 +1,13 @@
 # Dogfood report: spec-kit-linear -> OSH-INFRA (T077)
 
-**Run**: _filled by scripts/dogfood.sh on each invocation_
-**Operator**: _filled by script via Linear viewer query_
+**Run**: 2026-05-28T08:14:40Z
+**Operator**: ash@starlogik.com <ash@starlogik.com>
 **Workspace**: OSH-INFRA
 **Team UUID**: 6ab43461-6d22-4f02-bb1e-0be9859c7997
 **Repo**: ashbrener/spec-kit-linear
-**Branch**: _filled by script_
-**Bridge commit**: _filled by script_
-**Flags**: _filled by script (dry-run / skip-install / skip-seed)_
+**Branch**: 001-spec-kit-linear-bridge
+**Bridge commit**: 429ec7d
+**Flags**: dry-run=0 skip-install=1 skip-seed=0
 
 ## Overview
 
@@ -17,81 +17,90 @@ with the 9 lifecycle workflow states + labels, and reconciling
 spec 001 to the resulting Linear Project. Findings are appended to
 each section by `scripts/dogfood.sh` on each invocation.
 
-This file is **regenerated** every time `scripts/dogfood.sh` runs —
-the template below is what the file looks like on disk before the
-first run. Operator-authored notes under "Rough edges & follow-ups"
-will be preserved between runs only if you manually copy them out
-before re-running; the script does NOT merge old content.
-
 ## Pre-flight checks
 
-<!-- Filled by script: bash version, curl, jq, git, gh status, .env LINEAR_API_KEY presence. Per FR-018b every dependency the dogfood touches MUST be verified before any mutation fires; this section is the verification's audit trail. -->
+| Check | Status | Detail |
+|---|---|---|
+| bash 4+ | PASS | 5.3.9(1)-release |
+| curl | PASS | /usr/bin/curl |
+| jq | PASS | /usr/bin/jq |
+| git | PASS | /usr/bin/git |
+| gh | PASS | /opt/homebrew/bin/gh |
+| .env file | PASS | /Users/ashbrener/Code/AI/speckit-linear/.env |
+| LINEAR_API_KEY | PASS | length=48 |
+
+Pre-flight green. Proceeding.
 
 ## Step 1 — Install ceremony
 
-<!-- Filled by script: src/install.sh stdout/stderr + timing + outcome.
-
-Command (default):
-  bash src/install.sh --dev --auto-create --team <UUID> --non-interactive --with-action
-
-Acceptance criteria mirrored from spec.md User Story 4 / Acceptance Scenario 1:
-  - .specify/extensions.yml gains the bridge's six after_* hooks (optional: false per FR-031).
-  - .specify/extensions/linear/linear-config.yml is written with the team + project UUIDs (FR-032).
-  - .git/hooks/post-{checkout,commit,merge} are installed (FR-033).
-  - .github/workflows/spec-kit-linear-sync.yml is dropped from templates/github-action.yml (FR-027, FR-029).
-  - .mcp.json contains the Linear MCP entry (FR-018b dependency report). -->
+_Skipped via --skip-install._
 
 ## Step 2 — Workspace seed
 
-<!-- Filled by script: src/seed.sh stdout/stderr + timing + outcome + captured workflow_state UUIDs.
+Command: `bash src/seed.sh --team 6ab43461-6d22-4f02-bb1e-0be9859c7997`
 
-Command (default):
-  bash src/seed.sh --team <UUID>
+```text
+spec-kit-linear: seed team UUID: 6ab43461-6d22-4f02-bb1e-0be9859c7997
+spec-kit-linear: seed created workflow state 'Specifying' → d9e14f34-c445-4028-a772-c31d6579430a
+spec-kit-linear: seed created workflow state 'Clarifying' → dd879129-cd15-4156-bfd7-e7c8f47095be
+spec-kit-linear: seed created workflow state 'Planning' → 8f02e8d9-1b60-460f-b346-3d14552c18e3
+spec-kit-linear: seed created workflow state 'Tasking' → e5ea275e-1f4d-4f53-b4fb-b80fd8500589
+spec-kit-linear: seed created workflow state 'Red-team' → 278076df-3d30-49c1-bc50-2f3229020f45
+spec-kit-linear: seed created workflow state 'Implementing' → 9c417bfc-f2ed-42cb-a931-2d3260f45ee5
+spec-kit-linear: seed created workflow state 'Analyzing' → eb42ff4f-04f8-49c0-88c4-578cc2705a49
+spec-kit-linear: seed created workflow state 'Ready-to-merge' → 1e1de68f-084b-41e4-a7f6-e2bf44aba0f3
+spec-kit-linear: seed created workflow state 'Merged' → 1af17d82-7b5c-4331-a90e-48c87293184d
+spec-kit-linear: seed default state 'todo' → 86fb7cc1-d122-456a-aa58-afb24ce1d5a0
+spec-kit-linear: seed default state 'in_progress' → 3fcfc383-2316-402b-bc66-a2502cffe875
+spec-kit-linear: seed default state 'done' → 0cb3a3b4-0a07-437c-9a36-467cf876a4d6
+spec-kit-linear: seed created label 'phase:specifying' → a0482c69-d80c-4caa-954f-18c7fa8cab5d
+spec-kit-linear: seed created label 'phase:clarifying' → de473ec7-dc84-4141-8a1b-cae470334344
+spec-kit-linear: seed created label 'phase:planning' → 3195ada9-b877-4af5-aa54-551b36286a02
+spec-kit-linear: seed created label 'phase:tasking' → c41bda62-ec4a-4542-83db-2b7b01457580
+spec-kit-linear: seed created label 'phase:red_team' → 72c70d60-eb2d-47d1-a622-6a4806a0d17f
+spec-kit-linear: seed created label 'phase:implementing' → 1c240d02-9bee-4291-8bb6-1bc5c450ba72
+spec-kit-linear: seed created label 'phase:analyzing' → 37c2be38-f724-4842-93ff-c399cc0a0b8b
+spec-kit-linear: seed created label 'phase:ready_to_merge' → e2ca8745-0ca8-4bdd-a2fd-19f00d244173
+spec-kit-linear: seed created label 'phase:merged' → 54eed3d8-e6ea-4b08-95d1-67138db6332d
+spec-kit-linear: seed created label 'task-phase:1' → adce0cea-8ed6-4222-90cb-00495d2c0bbe
+spec-kit-linear: seed created label 'task-phase:2' → 3494fb88-5d5c-4229-bbb4-3998b2c73961
+spec-kit-linear: seed created label 'task-phase:3' → 3ea03549-6070-4fb9-8190-5fa4d669b10d
+spec-kit-linear: seed created label 'task-phase:4' → 5a5b2042-c150-44cf-bac1-a3576de24e51
+spec-kit-linear: seed created label 'task-phase:5' → f5c8e6c5-453b-4d77-9898-a1cc5366800d
+spec-kit-linear: seed created label 'task-phase:6' → ba363ec8-c39c-4ec6-a5c7-f41d6a913c04
+spec-kit-linear: seed created label 'task-phase:7' → 68913323-19da-48bc-b75e-82e91964f155
+spec-kit-linear: seed created label 'task-phase:8' → bc48a945-940f-4a92-b796-07dc68e31d77
+spec-kit-linear: seed created label 'task-phase:9' → cce3677a-3cd1-4c78-a8b5-ac61f5e5d60a
+spec-kit-linear: seed wrote .specify/extensions/linear/linear-config.yml
+===== speckit.linear summary =====
+speckit.linear seed
+Created: 0   Updated: 0   Archived: 0
+Skipped: 0   Warned: 0     Errors: 0
+==================================
+```
 
-Acceptance criteria mirrored from spec.md User Story 4 / Acceptance Scenario 2 + FR-021:
-  - The 9 spec-kit lifecycle workflow states exist on the team (Specifying, Clarifying, Planning, Tasking, Red-team, Implementing, Analyzing, Ready-to-merge, Merged).
-  - The 3 parent label groups exist (phase, speckit-spec, task-phase) plus the 9 phase:* children.
-  - workflow_state_uuids map is written back to linear-config.yml.
-  - Re-running the seed against an already-seeded workspace is a no-op (FR-021 idempotency). -->
+**Outcome**: PASS (exit 0) — duration 27s
 
 ## Step 3 — Reconcile spec 001 -> Linear
 
-<!-- Filled by script: src/reconcile.sh stdout/stderr + timing + outcome.
+Command: `bash src/reconcile.sh --spec 001`
 
-Command (default):
-  bash src/reconcile.sh --spec 001
+```text
+spec-kit-linear: config loaded from .specify/extensions/linear/linear-config.yml
+spec-kit-linear: spec 001: lifecycle=implementing branch=001-spec-kit-linear-bridge
+spec-kit-linear: spec 001: reconcile complete
+===== speckit.linear summary =====
+speckit.linear reconcile — spec 001
+Created: 2   Updated: 0   Archived: 0
+Skipped: 0   Warned: 0     Errors: 0
+==================================
+```
 
-Acceptance criteria mirrored from spec.md User Story 5 (this spec IS the bridge — running spec 001 against a fresh workspace is the retroactive-sync test by definition):
-  - A Project exists under the OSH team named "spec-kit-linear".
-  - One Issue exists for spec 001 with label speckit-spec:001 and the lifecycle phase that matches the filesystem state (probably "Implementing" — plan.md + tasks.md present, not yet merged).
-  - Sub-issues exist for each task phase (Phase 1 ... Phase 8 per tasks.md).
-  - Each sub-issue's description contains a tasks.md-mirroring checklist headed by the one-way-mirror banner (FR-006).
-  - Clarify sessions in spec.md are mirrored as Issue comments (FR-015).
-  - Re-running the reconcile is a no-op (Principle II — zero churn). -->
+**Outcome**: PASS (exit 0) — duration 20s
 
 ## Step 4 — Linear verification
 
-<!-- Filled by script: GraphQL queries confirm
-  - Project "spec-kit-linear" exists on team <UUID>
-  - Issue with label speckit-spec:001 exists with the expected identifier (OSH-1 if first), title, workflow state, labels
-  Each row of the verification table is PASS/FAIL with the underlying datum (URL, identifier, state name + type). -->
+| Check | Status | Detail |
+|---|---|---|
+| Project exists | FAIL | transport failure |
 
-## Summary
-
-<!-- Filled by script: overall pass/fail glyph, total wall-clock time, per-step exit codes + durations, the operator-facing Linear URL for the spec Issue, and an aggregated Warnings list (if any warnings were surfaced by the dogfood driver itself — distinct from sub-script stderr which is captured in the per-step transcripts). -->
-
-## Rough edges & follow-ups
-
-<!-- Operator-authored after run: what worked, what surprised, what needs polishing in v0.1.x.
-
-Suggested prompts the operator should answer post-run:
-  - Did the install ceremony's --auto-create placeholder Project UUID (00000000-0000-0000-0000-000000000000) actually cause a downstream failure, or did the bridge gracefully patch it on first reconcile?
-  - Were the workflow_state UUIDs captured by the seed correctly written back to linear-config.yml? Inspect the file.
-  - Did spec 001's reconcile correctly infer phase "Implementing" from filesystem state (plan.md + tasks.md exist, not yet merged)?
-  - How does the Linear UI render the Phase 1 ... Phase 8 sub-issue tree? Any rendering rough edges?
-  - Cold reconcile wall-clock vs plan.md's 30s budget — within target?
-  - Any FR-018b dependency rows that surfaced WARN rather than PASS — what's the remediation cost?
-
-Anything captured here is the agenda for the v0.1.x polish pass.
-Per T077: this section is the operator's running notebook for the
-dogfood; the rest of the report is regenerated mechanically. -->

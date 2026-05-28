@@ -1,0 +1,105 @@
+# spec-kit-linear — per-consumer-repo configuration template
+#
+# Role: declares everything the bridge needs to talk to one Linear
+# workspace+team+project from one consumer repo. Lives at
+# `.specify/extensions/linear/linear-config.yml` in the consumer repo.
+#
+# Install path: `specify extension add linear` ships THIS file into
+# `.specify/extensions/linear/config-template.yml` via copytree, but the
+# CLI does NOT auto-rename it (recon: extension-shape-recon.md §1, §5
+# Q1). Either the operator or `speckit.linear.install`'s first-run copy
+# step renames `config-template.yml` → `linear-config.yml` and fills in
+# the UUIDs. The seed step (`speckit.linear.seed`, FR-021/FR-032) then
+# populates `linear.workflow_state_uuids`.
+#
+# Commit status: THIS FILE IS COMMITTED (FR-002, Principle V — repo is
+# self-describing; clone + sync should "just work"). Secrets live in
+# `local-config.yml` (gitignored) or env vars, never here.
+#
+# Hand-edit policy: `linear.*.id` (UUIDs) and `linear.workflow_state_uuids`
+# come from `speckit.linear.install` / `speckit.linear.seed`. Do NOT
+# edit by hand unless you know what you're doing — lookups are by UUID,
+# never by name (FR-032), so a wrong UUID silently breaks sync.
+
+schema_version: 1          # template schema; bump if shape changes
+config_version: 1          # bump if operator hand-edits
+
+# Linear binding — resolved at install time (FR-002).
+linear:
+  workspace:
+    name: "OSH-INFRA"             # informational (display only)
+    url_key: "osh-infra"          # informational (workspace URL slug)
+  team:
+    id: "6ab43461-6d22-4f02-bb1e-0be9859c7997"   # Required (FR-002) — UUID is authoritative
+    key: "OSH"                    # informational; not used for lookup
+    name: "OSH-INFRA"             # informational
+  project:
+    id: "dc2e7503-4b65-42ac-bed8-d2aa2d817f60"   # Real UUID per T077 dogfood
+    name: "spec-kit-linear"        # informational (display only)
+  # Operator identity — resolved at install time via `viewer { id name email }`
+  # per FR-034. `user_id` is the lookup key (UUID); name/email are
+  # informational, surfaced in the install summary + the spec Issue
+  # memory block. assigneeId on issueCreate is read from user_id;
+  # issueUpdate never passes assigneeId so manual reassignment in
+  # Linear's UI persists across reconciles.
+  operator:
+    user_id: "9f411c68-640a-4f80-a803-c8716caff3f0"   # UUID — required (FR-034)
+    name: "ash@starlogik.com"                                 # informational
+    email: "ash@starlogik.com"                           # informational
+  # Workflow state UUIDs captured by the seed step (FR-021 + FR-032).
+  # Keys are the canonical lifecycle-phase identifiers. Lookup is by
+  # UUID, never by name — Linear UI renames are safe; deletion surfaces
+  # as an explicit error.
+  workflow_state_uuids:
+    specifying: "d9e14f34-c445-4028-a772-c31d6579430a"
+    clarifying: "dd879129-cd15-4156-bfd7-e7c8f47095be"
+    planning: "8f02e8d9-1b60-460f-b346-3d14552c18e3"
+    tasking: "e5ea275e-1f4d-4f53-b4fb-b80fd8500589"
+    red_team: "278076df-3d30-49c1-bc50-2f3229020f45"
+    implementing: "9c417bfc-f2ed-42cb-a931-2d3260f45ee5"
+    analyzing: "eb42ff4f-04f8-49c0-88c4-578cc2705a49"
+    ready_to_merge: "1e1de68f-084b-41e4-a7f6-e2bf44aba0f3"
+    merged: "1af17d82-7b5c-4331-a90e-48c87293184d"
+  default_state_uuids:
+    todo:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — sub-issue created, not yet started
+    in_progress:    "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row in-flight
+    done:           "00000000-0000-0000-0000-000000000000"   # Required (FR-032) — task row ticked complete
+
+# Behavior toggles — operator-tweakable.
+  default_state_uuids:
+    todo: "86fb7cc1-d122-456a-aa58-afb24ce1d5a0"
+    in_progress: "3fcfc383-2316-402b-bc66-a2502cffe875"
+    done: "0cb3a3b4-0a07-437c-9a36-467cf876a4d6"
+sync:
+  enabled: true              # If false, /speckit-* hooks skip Linear writes;
+                             # `speckit.linear.push` still works manually. (FR-031)
+  idle_window_days: 30       # Days before repo's Project Status flips to "Paused"
+                             # if no spec touched. 0 disables. (FR-002)
+  emit_summary: true         # Print structured sync summary every run (FR-023).
+
+# Webhook (Layer E) — populated by `speckit.linear.install` if opted in (FR-027).
+webhook:
+  installed: false                                       # flip true when YAML is committed
+  workflow_path: ".github/workflows/spec-kit-linear-sync.yml"   # (FR-027)
+  secret_name: "LINEAR_API_TOKEN"                        # GitHub repo secret name (FR-029)
+
+# Local git hooks — populated by `speckit.linear.install` (FR-033).
+# `.git/hooks/` is not versioned, so install is per-clone and re-runs
+# under FR-018b's dependency-verification contract.
+git_hooks:
+  installed: false
+  hooks:
+    - post-checkout    # branch / worktree switch → reconcile
+    - post-commit      # local commit may tick a task → reconcile
+    - post-merge       # local merge → reconcile
+
+# ---
+# How to bootstrap (first install, fresh consumer repo):
+#   1. `specify extension add linear`                 # copies this template
+#   2. `cp config-template.yml linear-config.yml`     # rename for the bridge to find it
+#   3. `/spec-kit-linear-install`                      # fills linear.{team,project}.id,
+#                                                     # installs webhook + git hooks,
+#                                                     # registers after_* hooks
+#   4. `/spec-kit-linear-seed`                         # creates workflow states + labels,
+#                                                     # fills workflow_state_uuids
+#   5. Commit `linear-config.yml`. Sync is now live (FR-002, Principle V).
