@@ -197,11 +197,18 @@ EOF
   # we assert on content presence rather than exact line count.
   [ "${#lines[@]}" -ge 2 ]
 
+  # macOS /tmp realpath gotcha (see CI run 26572145531): `git worktree list
+  # --porcelain` resolves paths to their physical form, so on Darwin a worktree
+  # under /var/folders/... is emitted as /private/var/folders/... — match both
+  # the raw $REPO/$other_wt prefix AND the /private-rewritten form so the same
+  # assertion passes on Linux and macOS.
   local saw_main=0 saw_feature=0
   for line in "${lines[@]}"; do
     case "$line" in
       "$REPO"*$'\t'main) saw_main=1 ;;
+      "/private$REPO"*$'\t'main) saw_main=1 ;;
       "$other_wt"*$'\t'001-feature) saw_feature=1 ;;
+      "/private$other_wt"*$'\t'001-feature) saw_feature=1 ;;
     esac
   done
   [ "$saw_main" -eq 1 ]
