@@ -15,6 +15,11 @@ arguments:
 
 # `/speckit.linear.status`
 
+## Summary
+
+Per-spec drift inspector — disk vs Linear, every spec in the consumer
+repo, never mutates Linear.
+
 Inspect, do not mutate. For each `specs/NNN-feature/` in the consumer
 repo, surface the disk-side facts, the Linear-side facts, the drift
 between them, and whether the current worktree holds write-authority
@@ -36,9 +41,11 @@ AI-agent entry point that runs the shell and surfaces its output. The
 formal API contract is `contracts/command-shapes.md` (`speckit.linear.status`
 slice). Operators reading this file are looking at the markdown the AI
 agent reads — the same operations are available via
-`bash src/status.sh` directly.
+`bash src/status.sh` directly. For the operator-facing end-to-end
+walkthrough see
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md).
 
-## Arguments
+## Usage
 
 | Argument | Default | Meaning |
 |---|---|---|
@@ -50,7 +57,7 @@ Exactly one of `spec` or "all specs" is in effect. When `spec` is not
 passed, the report walks every `specs/NNN-*/` directory in the consumer
 repo. `json` and `no-color` are orthogonal to `spec`.
 
-## CLI shape
+### CLI shape
 
 ```text
 speckit.linear.status [--spec NNN | --all] [--json | --human] [--no-color]
@@ -213,4 +220,17 @@ Each failure mode is surfaced as a named warning in the summary
 - `/speckit.linear.install` — per-repo install ceremony. Run once
   per consumer repo before the first push.
 
-See `contracts/command-shapes.md` for the formal contract on each.
+See `contracts/command-shapes.md` for the formal contract on each
+and
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md)
+for the end-to-end operator walkthrough.
+
+## FRs surfaced
+
+This command implements (in whole or in part):
+
+- **FR-022** — config-load halt with operator-actionable remediation.
+- **FR-023** — structured `summary::emit` block on stderr.
+- **FR-025** — per-spec write-authority status surfaced in the report.
+- **FR-026** — non-authoritative read-only behaviour; drift surfaced without write attempt.
+- **FR-004b** — `speckit-spec:NNN` label is the lookup key for the Linear-side fetch.

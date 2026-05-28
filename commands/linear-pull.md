@@ -18,6 +18,11 @@ arguments:
 
 # `/speckit.linear.pull`
 
+## Summary
+
+Linear-anchored cross-repo inventory of every spec Issue, grouped by
+Project, never mutates Linear.
+
 Cross-repo unified view of every spec Issue Linear knows about. The
 partner to `/speckit.linear.status`: where `status` is filesystem-
 anchored and drift-aware (one repo, comparing disk against Linear),
@@ -40,9 +45,11 @@ AI-agent entry point that runs the shell and surfaces its output. The
 formal API contract is `contracts/command-shapes.md`
 (`speckit.linear.pull` slice). Operators reading this file are looking
 at the markdown the AI agent reads — the same operations are available
-via `bash src/pull.sh` directly.
+via `bash src/pull.sh` directly. For the operator-facing end-to-end
+walkthrough see
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md).
 
-## Arguments
+## Usage
 
 | Argument | Default | Meaning |
 |---|---|---|
@@ -54,7 +61,7 @@ via `bash src/pull.sh` directly.
 `workspace-wide` and `phase` are orthogonal — every combination is
 valid. `json` and `no-color` are orthogonal to scope and phase.
 
-## CLI shape
+### CLI shape
 
 ```text
 speckit.linear.pull [--repo | --workspace-wide]
@@ -225,4 +232,20 @@ Each failure mode is surfaced as a named warning in the summary
 - `/speckit.linear.install` — per-repo install ceremony. Run once
   per consumer repo before the first push.
 
-See `contracts/command-shapes.md` for the formal contract on each.
+See `contracts/command-shapes.md` for the formal contract on each
+and
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md)
+for the end-to-end operator walkthrough.
+
+## FRs surfaced
+
+This command implements (in whole or in part):
+
+- **FR-004b** — `speckit-spec:NNN` workspace label as the cross-repo
+  spec-Issue lookup key.
+- **FR-022** — config-load halt with operator-actionable remediation.
+- **FR-023** — structured `summary::emit` block on stderr.
+- **FR-026** — read-only direction; the bridge never writes from this
+  command even from an authoritative worktree.
+- **FR-034** — operator assignee surfaced in the inventory.
+- **FR-035** — Fibonacci `[N]` estimate rollup surfaced in the inventory.

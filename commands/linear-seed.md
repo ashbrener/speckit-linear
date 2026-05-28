@@ -15,6 +15,12 @@ arguments:
 
 # `/speckit.linear.seed`
 
+## Summary
+
+One-shot per-workspace seed — creates the nine lifecycle workflow
+states and eighteen workspace labels, captures every UUID into
+`linear-config.yml`.
+
 One-shot workspace seed. Creates the Linear primitives the bridge relies
 on that do NOT mint themselves lazily during reconcile: nine custom
 lifecycle workflow states (one per spec-kit lifecycle phase) plus
@@ -48,7 +54,9 @@ formal API contract is `contracts/command-shapes.md` §4
 (`speckit.linear.seed`); the mutations issued are enumerated in
 `contracts/linear-graphql-mutations.md` §2. Operators reading this
 file are looking at the markdown the AI agent reads — the same
-operations are available via `bash src/seed.sh` directly.
+operations are available via `bash src/seed.sh` directly. For the
+operator-facing end-to-end walkthrough see
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md).
 
 ## Why GraphQL, not MCP
 
@@ -76,7 +84,7 @@ have an MCP session (hooks, CI, fresh checkouts), so the GraphQL path
 is the load-bearing one. The behaviour is identical either way per
 Principle II.
 
-## Arguments
+## Usage
 
 | Argument | Default | Meaning |
 |---|---|---|
@@ -85,6 +93,22 @@ Principle II.
 | `workspace-only` | false | Run the Linear-side workspace mutations only; do NOT write captured UUIDs back to `linear-config.yml`. Use this when you want to verify the workspace state from a non-bridge-installed context (e.g. dogfood from a sibling repo) without touching this repo's config. |
 
 `dry-run` and `workspace-only` are orthogonal. Both default off.
+
+### CLI shape
+
+```text
+speckit.linear.seed [--team UUID] [--dry-run] [--workspace-only]
+```
+
+Default: read team from `linear-config.yml`; full write path.
+
+> FR-036 agent labels: this seed step creates the canonical
+> `agent:claude` and `agent:codex` workspace labels at seed time and
+> captures their UUIDs into `linear-config.yml.linear.agent_label_uuids`.
+> Non-canonical agent families (e.g. `agent:gemini`) are lazy-created
+> by reconcile on first encounter. See spec FR-036 for the full
+> stamping semantics (sticky labels, never removed; cross-agent
+> provenance preserved).
 
 ## Algorithm (what the AI agent executes)
 
@@ -336,4 +360,24 @@ trawling logs:
   install + seed even before the first push.
 - `/speckit.linear.status` — drift report. Same prereq.
 
-See `contracts/command-shapes.md` for the formal contract on each.
+See `contracts/command-shapes.md` for the formal contract on each
+and
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md)
+for the end-to-end operator walkthrough.
+
+## FRs surfaced
+
+This command implements (in whole or in part):
+
+- **FR-005 / contracts §4.3** — captures `default_state_uuids` (Todo
+  / In Progress / Done) for task-phase sub-issue states.
+- **FR-021** — workspace seed operation; idempotent re-runs (a
+  re-run against an already-seeded workspace produces `Created: 0`
+  / `Skipped: 27`).
+- **FR-022** — reconcile halts until the seed has run at least
+  once; this command is that one-shot.
+- **FR-023** — structured `summary::emit` block on stderr.
+- **FR-032** — every Linear workflow state reference goes through
+  the captured UUIDs (Principle V — UUID binding).
+- **Principle VI** — direct GraphQL with `LINEAR_API_KEY`, matching
+  the GitHub Action's wire format for symmetry across local + CI.

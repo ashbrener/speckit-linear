@@ -15,10 +15,15 @@ arguments:
 
 # `/speckit.linear.push`
 
+## Summary
+
+Reconcile every `specs/NNN-feature/` directory in the consumer repo
+into Linear (filesystem → Linear, idempotent, write-authority-gated).
+
 Reconcile the consumer repo's `specs/NNN-feature/` directories into
 Linear. This is the load-bearing path that mirrors filesystem state
-into Linear Issues, sub-issues, checklists, blocking relations,
-clarify-session comments, and lifecycle labels.
+into Linear Issues, task-phase sub-issues, checklists, blocking
+relations, clarify-session comments, and lifecycle-phase labels.
 
 **Direction**: one-way, filesystem → Linear (Principle I).
 **Semantics**: idempotent (Principle II — zero-churn on unchanged
@@ -36,13 +41,15 @@ The formal API contract is `contracts/command-shapes.md` §1
 (`speckit.linear.push`); the mutations issued are enumerated in
 `contracts/linear-graphql-mutations.md` §4. Operators reading this
 file are looking at the markdown the AI agent reads — the same
-operations are available via `bash src/reconcile.sh` directly.
+operations are available via `bash src/reconcile.sh` directly. For
+the operator-facing end-to-end walkthrough see
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md).
 
-## Arguments
+## Usage
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Sync only this spec. |
+| `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Reconcile only this spec. |
 | `dry-run` | false | Log every mutation that WOULD fire; issue none. Safe inspection mode. |
 | `retroactive` | false | First-time-adoption mode (FR-014 / User Story 5). Implies `--all`; suppresses "skipped because non-authoritative" warnings. |
 
@@ -50,6 +57,14 @@ Exactly one of `spec` or "all specs" is in effect — if `spec` is not
 passed, the reconciler walks every `specs/NNN-*/` directory in the
 consumer repo. If `retroactive` is set and `spec` is not, `--all` is
 implied. `dry-run` is orthogonal to `retroactive` and `spec`.
+
+### CLI shape
+
+```text
+speckit.linear.push [--spec NNN | --all] [--dry-run] [--retroactive]
+```
+
+Default: `--all`.
 
 ## Algorithm (what the AI agent executes)
 
@@ -104,26 +119,31 @@ implied. `dry-run` is orthogonal to `retroactive` and `spec`.
        (>1 match) keeps the most-recently-updated and surfaces the
        others as warnings. On retroactive sync sets `stateId`
        directly to the inferred end-state (FR-014).
-     - Renders the structured "memory" block (FR-004) and splices
-       it into the spec Issue's description between the
-       `<!-- spec-kit-linear:memory:begin -->` /
-       `<!-- spec-kit-linear:memory:end -->` fences. Operator-added
-       prose around the fences is preserved.
+     - Rewrites the spec Issue's description in canonical order
+       (overview → memory block → diagrams) per FR-004. The bridge
+       fully owns the description body; any prior content is
+       discarded. Operator annotations belong in Linear comments per
+       FR-008 (the canonical escape hatch the bridge never touches).
+       The memory block surfaces lifecycle phase, current task phase,
+       branch, worktree path(s), last-touched timestamp, the GitHub
+       source link, operator assignee (FR-034), and the Fibonacci
+       estimate rollup (FR-035).
      - Reconciles task-phase sub-issues per `## Phase N: <Name>`
        header in `tasks.md` (FR-005). Each sub-issue carries a
        checklist mirror with a read-only header (FR-006). Workflow
        state is Todo / In Progress / Done based on checklist
        completion ratio.
-     - Wires inter-phase blocking relations (FR-007) by reading
+     - Wires inter-task-phase blocking relations (FR-007) by reading
        "Phase N depends on Phase M" hints from `plan.md` /
        `tasks.md`. Native `save_issue.blocks` per the MCP runtime
        probe; pre-queries existing relations to avoid duplicate-add.
      - Mirrors each `### Session YYYY-MM-DD` clarify block under
        `## Clarifications` to a Linear Issue comment, idempotent via
-       a deterministic HTML marker (FR-008 + FR-015).
+       a deterministic comment marker (FR-008 + FR-015).
      - Ensures the spec Issue carries `phase:<current>` and
        `speckit-spec:NNN` labels; strips stale `phase:*` labels.
        When phase is `merged`, no `phase:*` label is set (FR-013).
+       FR-036 agent labels — see spec for stamping rules.
 
 4. **Render the structured summary.** The script emits a block to
    stderr at the end of every invocation (FR-023). The block looks
@@ -220,4 +240,29 @@ logs:
 - `/speckit.linear.install` — per-repo install ceremony. Run once
   per consumer repo before the first push.
 
-See `contracts/command-shapes.md` for the formal contract on each.
+See `contracts/command-shapes.md` for the formal contract on each
+and
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md)
+for the end-to-end operator walkthrough.
+
+## FRs surfaced
+
+This command implements (in whole or in part):
+
+- **FR-001 / FR-011** — convergent reconcile across hook and manual paths.
+- **FR-004** — bridge-owned spec Issue description (overview → memory → diagrams; no fence markers).
+- **FR-004b** — `speckit-spec:NNN` workspace label as the stable lookup key.
+- **FR-005 / FR-006** — task-phase sub-issues with mirrored checklists.
+- **FR-007** — inter-task-phase blocking relations.
+- **FR-008 / FR-015** — clarify-session comments (operator escape hatch).
+- **FR-012 / FR-013** — lifecycle-phase inference and `phase:*` label hygiene.
+- **FR-014** — retroactive first-time-adoption mode.
+- **FR-016 / FR-017** — unidirectional sync; no PR mutations.
+- **FR-022** — halt with operator-actionable diagnostic on unseeded workspace.
+- **FR-023 / FR-024** — structured summary block; named warnings.
+- **FR-025 / FR-026** — per-spec write-authority gate; non-authoritative read-only mode.
+- **FR-030** — gh CLI primary / git-only fallback for PR-state hints.
+- **FR-031 / FR-033** — auto-fire from `after_*` hooks and local git hooks.
+- **FR-034** — operator assignee captured into the memory block.
+- **FR-035** — Fibonacci `[N]` estimate rollup.
+- **FR-036** — agent labels — see spec for stamping rules.

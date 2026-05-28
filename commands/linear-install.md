@@ -24,8 +24,15 @@ arguments:
 
 # `/speckit.linear.install`
 
+## Summary
+
+Per-consumer-repo install ceremony — verify dependencies, resolve
+Team + Project UUIDs (Principle V — UUID binding), wire OAuth-first
+MCP auth (Principle VI), register `after_*` hooks, install local git
+hooks.
+
 Run the per-consumer-repo install ceremony for the spec-kit-linear
-bridge. This is the load-bearing one-shot step that wires a fresh
+bridge. This is the load-bearing one-shot ceremony that wires a fresh
 consumer repo to its Linear workspace: dependencies are verified, the
 per-repo `linear-config.yml` is written, the six `after_*` hooks are
 registered with `optional: false` (FR-031), and the three local git
@@ -51,9 +58,15 @@ the AI-agent entry point that runs the shell and surfaces its output.
 The formal API contract is `contracts/command-shapes.md` §5
 (`speckit.linear.install`). Operators reading this file are looking
 at the markdown the AI agent reads — the same operations are
-available via `bash src/install.sh` directly.
+available via `bash src/install.sh` directly. The constitutional
+gates governing this ceremony are `.specify/memory/constitution.md`
+Principle V (UUID binding — all state references resolve through
+captured UUIDs, never names) and Principle VI (OAuth-first auth —
+long-lived keys live only at the edges). For the operator-facing
+end-to-end walkthrough see
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md).
 
-## Arguments
+## Usage
 
 | Argument | Default | Meaning |
 |---|---|---|
@@ -312,4 +325,36 @@ Selected named cases:
   without actually issuing mutations.
 
 See `contracts/command-shapes.md` for the formal contract on each
-and `quickstart.md` for the operator's first-run walkthrough.
+and
+[`quickstart.md`](../specs/001-spec-kit-linear-bridge/quickstart.md)
+for the end-to-end operator walkthrough.
+
+## FRs surfaced
+
+This command implements (in whole or in part):
+
+- **FR-002** — per-repo `linear-config.yml` materialised from the
+  template at the canonical path.
+- **FR-018b** — structured dependency report on stderr; silent
+  failures forbidden.
+- **FR-022** — T063 seed-state check; halt in non-interactive mode
+  when the workspace is unseeded.
+- **FR-027** — Layer E GitHub Action template install (T064 prompt).
+- **FR-029** — surface the `gh secret set LINEAR_API_TOKEN` command;
+  the bridge does not provision the secret.
+- **FR-030** — gh CLI dependency check (warning only; reconcile
+  falls back to git-only PR-state hints).
+- **FR-031** — register the six `after_*` hooks with `optional:
+  false` under `.specify/extensions.yml`.
+- **FR-033** — install `post-checkout`, `post-commit`, `post-merge`
+  local git hooks under `.git/hooks/`.
+- **FR-033b** — dogfood-safe mode via `SPECKIT_LINEAR_DOGFOOD_SAFE`;
+  surfaced in the dependency report and final summary so the
+  override is unambiguous.
+- **Principle V** — UUID binding gate; the install captures Team +
+  Project UUIDs so every subsequent operation resolves by UUID.
+- **Principle VI** — OAuth-first via the Linear MCP; long-lived
+  `LINEAR_API_KEY` only appears at the edges (seed, git hooks, the
+  GitHub Action).
+- **Principle VII** — re-runs preserve operator `enabled: false`
+  edits on registered hooks.
