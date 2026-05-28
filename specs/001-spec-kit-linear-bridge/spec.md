@@ -493,6 +493,44 @@ intermediate phase transitions appearing in Linear's activity log.
   the reconciler MUST surface a warning and create Issues
   unassigned rather than fail (graceful degradation).
 
+#### Estimates (story points)
+
+- **FR-035**: Each task line in `tasks.md` MAY carry an optional
+  Fibonacci-scale story-point marker (`[N]` where N ∈ {1, 2, 3, 5, 8,
+  13, 21}) within the leading run of bracketed prefixes that follow
+  the task code, e.g. `- [ ] T001 [3] Author the contracts JSON` or
+  `- [x] T020 [P] [US1] [5] Integration test for fresh reconcile`.
+  The bridge MUST extract the FIRST digit-only bracketed token
+  (anywhere in the first 5 leading bracketed tokens, scanning left to
+  right) as the task's estimate. Non-digit bracketed tokens (`[P]`,
+  `[US1]`, etc.) MUST be preserved in the task description — only
+  the digit token is consumed.
+  The bridge MUST emit Linear `estimate` values as follows:
+  - Each task-phase sub-issue's `estimate` field = sum of every `[N]`
+    marker across the tasks belonging to that phase. If NO task in
+    the phase carries a marker, the bridge MUST omit `estimate`
+    from the mutation entirely (Linear's UI shows "—" rather than
+    "0"), so the absence of markers reads as "operator declined to
+    estimate" rather than "estimated as zero".
+  - The spec Issue's `estimate` field = sum of every `[N]` across
+    all of `tasks.md` (the spec-level rollup). Same omission rule:
+    no markers at all ⇒ no `estimate` field on the mutation.
+  Single-write-on-create-plus-driven-update semantics, mirroring
+  FR-034 but in reverse: on `issueCreate` the bridge stamps the
+  computed estimate (if any). On `issueUpdate` the bridge MUST
+  rewrite the estimate when the computed value is non-empty AND
+  differs from Linear's current value; if the computed value is
+  empty (no markers anywhere) the bridge MUST NOT clear an
+  operator-set Linear estimate, so manual Linear-side estimation
+  remains the operator's escape hatch.
+  Bridge behaviour MUST be tolerant of malformed markers: any
+  bracketed token whose contents are NOT pure digits is ignored as
+  an estimate candidate and left in the description verbatim. The
+  bridge MUST NOT validate Fibonacci-scale membership — if an
+  operator writes `[7]` (off-scale), the bridge passes 7 through to
+  Linear and lets Linear's team-level estimation scale handle
+  rounding or rejection.
+
 #### Setup, auth, and multi-workspace
 
 - **FR-018**: The bridge MUST be installable into a consumer repo via
@@ -645,8 +683,12 @@ intermediate phase transitions appearing in Linear's activity log.
   `## Phase N: <Name>` headers. Mirrors to one Linear **sub-issue**
   under the spec Issue. Carries its own workflow state.
 - **Task**: An entry in `tasks.md`. Identified by its task code
-  (e.g. `T003-013`). Mirrors to one **checklist item** in its
-  task-phase sub-issue's description — not a Linear Issue.
+  (e.g. `T003-013`) and optionally a Fibonacci `[N]` story-point
+  estimate marker (per FR-035) carried in the leading bracketed
+  prefix run (e.g. `T003 [3]` or `T003 [P] [US1] [3]`). Mirrors to
+  one **checklist item** in its task-phase sub-issue's description —
+  not a Linear Issue. Estimates roll up: per-phase sum → sub-issue
+  `estimate`; spec-level sum → spec Issue `estimate`.
 - **Lifecycle phase**: The spec's current position in the spec-kit
   flow (Specifying, Clarifying, Planning, Tasking, Red-team,
   Implementing, Analyzing, Ready-to-merge, Merged). Encoded on the

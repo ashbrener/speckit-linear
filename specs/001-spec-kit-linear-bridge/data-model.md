@@ -130,11 +130,14 @@ Markdown, spec-kit's native shape. Parsed by `src/parser.sh`.
 | Parsed field | Source | Shape |
 |---|---|---|
 | `task_phases[]` | each `## Phase N: <Name>` header | `{ index: int, name: string, tasks: Task[] }` |
-| `task_phases[].tasks[]` | checklist items under each phase header | `{ code, title, complete, dependency_markers[] }` |
+| `task_phases[].tasks[]` | checklist items under each phase header | `{ code, title, complete, estimate, dependency_markers[] }` |
 | `task_phases[].tasks[].code` | `T###-NNN` from line prefix | string |
 | `task_phases[].tasks[].complete` | `[x]` vs `[ ]` | bool |
+| `task_phases[].tasks[].estimate` | optional `[N]` (digit-only bracketed token) within first 5 leading bracketed prefixes — FR-035 | int? |
 | `task_phases[].tasks[].dependency_markers[]` | inline `(depends on T###-NNN)` tokens | string[] |
 | `inter_phase_dependencies[]` | derived from per-task deps that cross phase boundaries | `{ from_phase: int, to_phase: int }` |
+| `phase_estimate(N)` | sum of `[N]` markers across phase N's tasks; empty when no marker present | int? |
+| `spec_estimate` | sum of every `[N]` across all phases; empty when no marker present | int? |
 
 **Parser invariants**
 

@@ -21,10 +21,10 @@
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [x] T001 Create the bridge's source-tree skeleton: `src/`, `commands/`, `templates/git-hooks/`, `tests/unit/`, `tests/integration/`, `tests/fixtures/specs/` per `plan.md` §Project Structure ✓ 2026-05-28
-- [x] T002 [P] Apply markdown-lint CI fix per `validation/ci-markdownlint-diagnosis.md`: write `.markdownlint-cli2.jsonc` at repo root, edit `.github/workflows/ci.yml` to drop the broken inline `--config '{...}'` flag (so the linter discovers the config file via auto-discovery), confirm CI goes green on next push ✓ Applied by markdown-lint fix agent on 2026-05-28.
-- [x] T003 [P] Document local dev install in `CONTRIBUTING.md` §Code style: `bash 4+` (macOS `brew install bash`), `bats-core 1.11.0`, `shellcheck`, `jq 1.6+`, `markdownlint-cli2`. Cross-link to CI workflow file ✓ 2026-05-28
-- [x] T004 [P] Add `tests/unit/.gitkeep`, `tests/integration/.gitkeep`, `tests/fixtures/specs/.gitkeep` so empty directories survive `git add` ✓ 2026-05-28
+- [x] T001 [3] Create the bridge's source-tree skeleton: `src/`, `commands/`, `templates/git-hooks/`, `tests/unit/`, `tests/integration/`, `tests/fixtures/specs/` per `plan.md` §Project Structure ✓ 2026-05-28
+- [x] T002 [P] [1] Apply markdown-lint CI fix per `validation/ci-markdownlint-diagnosis.md`: write `.markdownlint-cli2.jsonc` at repo root, edit `.github/workflows/ci.yml` to drop the broken inline `--config '{...}'` flag (so the linter discovers the config file via auto-discovery), confirm CI goes green on next push ✓ Applied by markdown-lint fix agent on 2026-05-28.
+- [x] T003 [P] [1] Document local dev install in `CONTRIBUTING.md` §Code style: `bash 4+` (macOS `brew install bash`), `bats-core 1.11.0`, `shellcheck`, `jq 1.6+`, `markdownlint-cli2`. Cross-link to CI workflow file ✓ 2026-05-28
+- [x] T004 [P] [1] Add `tests/unit/.gitkeep`, `tests/integration/.gitkeep`, `tests/fixtures/specs/.gitkeep` so empty directories survive `git add` ✓ 2026-05-28
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
@@ -132,21 +132,21 @@
 
 ### Tests for User Story 4
 
-- [x] T054 [P] [US4] ✓ 2026-05-28 tests/integration/us4-seed-fresh-workspace.bats — given a fresh sandbox Linear workspace, run `src/seed.sh`, assert 9 workflow states created with correct type mappings, all `phase:*` and `task-phase:*` labels created, `workflow_state_uuids` map written into `linear-config.yml`
-- [x] T055 [P] [US4] ✓ 2026-05-28 tests/integration/us4-seed-idempotent.bats — run seed twice in a row, assert second run creates nothing new and emits "already seeded" summary
-- [x] T056 [P] [US4] ✓ 2026-05-28 tests/integration/us4-install-action.bats — accept the Action installation prompt during install, assert `.github/workflows/spec-kit-linear-sync.yml` exists with correct triggers and the install step printed `LINEAR_API_TOKEN` provisioning instructions per FR-029
-- [x] T057 [P] [US4] ✓ 2026-05-28 tests/integration/us4-unseeded-halts.bats — invoke reconciler against an UNSEEDED workspace, assert it halts with a clear error pointing at `speckit.linear.seed` (FR-022)
+- [x] T054 [P] [US4] [3] ✓ 2026-05-28 tests/integration/us4-seed-fresh-workspace.bats — given a fresh sandbox Linear workspace, run `src/seed.sh`, assert 9 workflow states created with correct type mappings, all `phase:*` and `task-phase:*` labels created, `workflow_state_uuids` map written into `linear-config.yml`
+- [x] T055 [P] [US4] [2] ✓ 2026-05-28 tests/integration/us4-seed-idempotent.bats — run seed twice in a row, assert second run creates nothing new and emits "already seeded" summary
+- [x] T056 [P] [US4] [3] ✓ 2026-05-28 tests/integration/us4-install-action.bats — accept the Action installation prompt during install, assert `.github/workflows/spec-kit-linear-sync.yml` exists with correct triggers and the install step printed `LINEAR_API_TOKEN` provisioning instructions per FR-029
+- [x] T057 [P] [US4] [2] ✓ 2026-05-28 tests/integration/us4-unseeded-halts.bats — invoke reconciler against an UNSEEDED workspace, assert it halts with a clear error pointing at `speckit.linear.seed` (FR-022)
 
 ### Implementation for User Story 4
 
-- [x] T058 [US4] ✓ 2026-05-28 Implement `src/seed.sh` — creates the 9 required workflow states via `workflowStateCreate` GraphQL mutation (the only hot-path mutation that needs direct GraphQL per the MCP probe). State definitions: Specifying (unstarted), Clarifying (started), Planning (started), Tasking (started), Red-team (started), Implementing (started), Analyzing (started), Ready-to-merge (started), Merged (completed). Captures each UUID at creation and writes the `workflow_state_uuids` map into `linear-config.yml`
-- [x] T059 [US4] ✓ 2026-05-28 `src/seed.sh`: label creation — workspace-scoped labels `phase:specifying`, `phase:clarifying`, …, `phase:merged`, plus `task-phase:1`..`task-phase:9` (covers up to 9 task phases per spec; expandable). The `speckit-spec:NNN` label is auto-stamped per spec by reconcile, not seeded
-- [x] T060 [US4] ✓ 2026-05-28 `src/seed.sh`: idempotency — query existing workflow states + labels by name, skip creation for any that already exist; capture UUIDs of existing matches and write to config
-- [x] T061 [US4] ✓ 2026-05-28 `commands/linear-seed.md` — AI-invoked seed command, calls `src/seed.sh`. Documents the one-shot per-workspace nature and the workflow state schema being created
-- [x] T062 [US4] ✓ 2026-05-28 templates/github-action.yml — Layer E webhook workflow per `contracts/webhook-action.md` and `validation/github-action-mechanics.md`. Triggers on `pull_request: [opened, ready_for_review, closed]`, `permissions: contents: read`, single `issueUpdate` mutation flipping `stateId` only (no labels, no comments — Principle III)
-- [ ] T063 [US4] Update `src/install.sh` to detect Linear workspace seeded-state on first install — query `workflow_state_uuids` presence; if absent and operator has just resolved Team UUID, prompt to run `speckit.linear.seed` immediately or defer
-- [ ] T064 [US4] Update `src/install.sh` to interactively offer Action installation per FR-027 — opt-in prompt, copies `templates/github-action.yml` into `.github/workflows/spec-kit-linear-sync.yml`, prints `gh secret set LINEAR_API_TOKEN` instructions per FR-029
-- [ ] T065 [US4] `commands/linear-install.md`: document the full install ceremony walkthrough end-to-end per `quickstart.md` (referencing operator-facing prose, not duplicating it)
+- [x] T058 [US4] [8] ✓ 2026-05-28 Implement `src/seed.sh` — creates the 9 required workflow states via `workflowStateCreate` GraphQL mutation (the only hot-path mutation that needs direct GraphQL per the MCP probe). State definitions: Specifying (unstarted), Clarifying (started), Planning (started), Tasking (started), Red-team (started), Implementing (started), Analyzing (started), Ready-to-merge (started), Merged (completed). Captures each UUID at creation and writes the `workflow_state_uuids` map into `linear-config.yml`
+- [x] T059 [US4] [5] ✓ 2026-05-28 `src/seed.sh`: label creation — workspace-scoped labels `phase:specifying`, `phase:clarifying`, …, `phase:merged`, plus `task-phase:1`..`task-phase:9` (covers up to 9 task phases per spec; expandable). The `speckit-spec:NNN` label is auto-stamped per spec by reconcile, not seeded
+- [x] T060 [US4] [3] ✓ 2026-05-28 `src/seed.sh`: idempotency — query existing workflow states + labels by name, skip creation for any that already exist; capture UUIDs of existing matches and write to config
+- [x] T061 [US4] [2] ✓ 2026-05-28 `commands/linear-seed.md` — AI-invoked seed command, calls `src/seed.sh`. Documents the one-shot per-workspace nature and the workflow state schema being created
+- [x] T062 [US4] [5] ✓ 2026-05-28 templates/github-action.yml — Layer E webhook workflow per `contracts/webhook-action.md` and `validation/github-action-mechanics.md`. Triggers on `pull_request: [opened, ready_for_review, closed]`, `permissions: contents: read`, single `issueUpdate` mutation flipping `stateId` only (no labels, no comments — Principle III)
+- [ ] T063 [US4] [3] Update `src/install.sh` to detect Linear workspace seeded-state on first install — query `workflow_state_uuids` presence; if absent and operator has just resolved Team UUID, prompt to run `speckit.linear.seed` immediately or defer
+- [ ] T064 [US4] [3] Update `src/install.sh` to interactively offer Action installation per FR-027 — opt-in prompt, copies `templates/github-action.yml` into `.github/workflows/spec-kit-linear-sync.yml`, prints `gh secret set LINEAR_API_TOKEN` instructions per FR-029
+- [ ] T065 [US4] [1] `commands/linear-install.md`: document the full install ceremony walkthrough end-to-end per `quickstart.md` (referencing operator-facing prose, not duplicating it)
 
 **Checkpoint**: US4 complete. Fresh install path validated end-to-end; an operator following `quickstart.md` reaches first-successful-sync in under 10 minutes.
 

@@ -156,38 +156,167 @@ setup() {
     run parser::tasks_in_phase "${FIXTURES}/002-multi-phase/tasks.md" 1
     [ "$status" -eq 0 ]
     [ "${#lines[@]}" -eq 2 ]
-    [ "${lines[0]}" = $'T002-001\tunchecked\tCreate skeleton directories' ]
-    [ "${lines[1]}" = $'T002-002\tunchecked\t[P] Configure tooling' ]
+    # Trailing tab + empty 4th field = estimate column (FR-035), empty
+    # when the task carries no [N] marker.
+    [ "${lines[0]}" = $'T002-001\tunchecked\tCreate skeleton directories\t' ]
+    [ "${lines[1]}" = $'T002-002\tunchecked\t[P] Configure tooling\t' ]
 }
 
 @test "tasks_in_phase: 002 Phase 2 returns two unchecked tasks" {
     run parser::tasks_in_phase "${FIXTURES}/002-multi-phase/tasks.md" 2
     [ "$status" -eq 0 ]
     [ "${#lines[@]}" -eq 2 ]
-    [ "${lines[0]}" = $'T002-003\tunchecked\tImplement core module A' ]
-    [ "${lines[1]}" = $'T002-004\tunchecked\t[P] Implement core module B (depends on T002-001)' ]
+    [ "${lines[0]}" = $'T002-003\tunchecked\tImplement core module A\t' ]
+    [ "${lines[1]}" = $'T002-004\tunchecked\t[P] Implement core module B (depends on T002-001)\t' ]
 }
 
 @test "tasks_in_phase: 004 Phase 1 returns two checked tasks" {
     run parser::tasks_in_phase "${FIXTURES}/004-already-merged/tasks.md" 1
     [ "$status" -eq 0 ]
     [ "${#lines[@]}" -eq 2 ]
-    [ "${lines[0]}" = $'T004-001\tchecked\tCreate skeleton' ]
-    [ "${lines[1]}" = $'T004-002\tchecked\tWire CI' ]
+    [ "${lines[0]}" = $'T004-001\tchecked\tCreate skeleton\t' ]
+    [ "${lines[1]}" = $'T004-002\tchecked\tWire CI\t' ]
 }
 
 @test "tasks_in_phase: 003 Phase 1 ignores the malformed line above the header" {
     run parser::tasks_in_phase "${FIXTURES}/003-malformed-tasks/tasks.md" 1
     [ "$status" -eq 0 ]
     [ "${#lines[@]}" -eq 2 ]
-    [ "${lines[0]}" = $'T003-002\tunchecked\tFirst properly-grouped task' ]
-    [ "${lines[1]}" = $'T003-003\tunchecked\tSecond properly-grouped task' ]
+    [ "${lines[0]}" = $'T003-002\tunchecked\tFirst properly-grouped task\t' ]
+    [ "${lines[1]}" = $'T003-003\tunchecked\tSecond properly-grouped task\t' ]
 }
 
 @test "tasks_in_phase: unknown phase index returns no lines" {
     run parser::tasks_in_phase "${FIXTURES}/002-multi-phase/tasks.md" 99
     [ "$status" -eq 0 ]
     [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# parser::tasks_in_phase — [N] estimate extraction (FR-035)
+# ---------------------------------------------------------------------------
+
+@test "tasks_in_phase: extracts [N] at start of description" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T001 [3] Author the contracts JSON
+EOF
+    run parser::tasks_in_phase "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = $'T001\tunchecked\tAuthor the contracts JSON\t3' ]
+    rm -rf "$tmp"
+}
+
+@test "tasks_in_phase: extracts [N] after [P] and preserves [P] in desc" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [x] T002 [P] [5] Implement parser
+EOF
+    run parser::tasks_in_phase "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = $'T002\tchecked\t[P] Implement parser\t5' ]
+    rm -rf "$tmp"
+}
+
+@test "tasks_in_phase: extracts [N] after [P] [US1] and preserves both" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [x] T003 [P] [US1] [8] Wire reconcile flow
+EOF
+    run parser::tasks_in_phase "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = $'T003\tchecked\t[P] [US1] Wire reconcile flow\t8' ]
+    rm -rf "$tmp"
+}
+
+@test "tasks_in_phase: leaves description untouched when no digit marker" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T004 [P] [US1] Plain task without estimate
+EOF
+    run parser::tasks_in_phase "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = $'T004\tunchecked\t[P] [US1] Plain task without estimate\t' ]
+    rm -rf "$tmp"
+}
+
+# ---------------------------------------------------------------------------
+# parser::phase_estimate & parser::spec_estimate
+# ---------------------------------------------------------------------------
+
+@test "phase_estimate: sums [N] markers within a phase" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T001 [3] First
+- [x] T002 [P] [5] Second
+- [ ] T003 No marker
+## Phase 2: Other
+- [ ] T010 [8] Eight
+EOF
+    run parser::phase_estimate "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ "$output" = "8" ]
+    run parser::phase_estimate "${tmp}/tasks.md" 2
+    [ "$status" -eq 0 ]
+    [ "$output" = "8" ]
+    rm -rf "$tmp"
+}
+
+@test "phase_estimate: empty when phase has no markers" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T001 No estimate
+- [ ] T002 [P] Also no estimate
+EOF
+    run parser::phase_estimate "${tmp}/tasks.md" 1
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    rm -rf "$tmp"
+}
+
+@test "spec_estimate: rolls up across all phases" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T001 [3] First
+- [x] T002 [P] [5] Second
+## Phase 2: Other
+- [ ] T010 [13] Thirteen
+## Phase 3: Empty
+- [ ] T020 No marker here
+EOF
+    run parser::spec_estimate "${tmp}/tasks.md"
+    [ "$status" -eq 0 ]
+    [ "$output" = "21" ]
+    rm -rf "$tmp"
+}
+
+@test "spec_estimate: empty when no task in any phase carries a marker" {
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "${tmp}/tasks.md" <<'EOF'
+## Phase 1: Setup
+- [ ] T001 No estimate
+## Phase 2: Other
+- [ ] T010 [P] Also none
+EOF
+    run parser::spec_estimate "${tmp}/tasks.md"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    rm -rf "$tmp"
 }
 
 # ---------------------------------------------------------------------------

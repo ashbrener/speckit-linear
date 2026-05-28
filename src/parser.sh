@@ -9,6 +9,8 @@
 #   parser::lifecycle_phase <spec_dir> [pr_state]
 #   parser::task_phases <tasks_md_path>
 #   parser::tasks_in_phase <tasks_md_path> <phase_index>
+#   parser::phase_estimate <tasks_md_path> <phase_index>
+#   parser::spec_estimate <tasks_md_path>
 #   parser::malformed_task_lines <tasks_md_path>
 #   parser::clarify_sessions <spec_md_path>
 #   parser::clarify_session_bullets <spec_md_path> <date>
@@ -216,11 +218,22 @@ parser::task_phases() {
 # parser::tasks_in_phase <tasks_md_path> <phase_index>
 #
 # Emits one line per task belonging to phase `<phase_index>`, formatted
-# `<TaskID>\t<checked|unchecked>\t<description>`. Tasks are checklist
-# items (`- [ ]` / `- [x]`) appearing between the matching
+# `<TaskID>\t<checked|unchecked>\t<description>\t<estimate>`. Tasks are
+# checklist items (`- [ ]` / `- [x]`) appearing between the matching
 # `## Phase N:` heading and the next `## ` heading. Task ID is the
 # first whitespace-separated token after the checkbox; description is
 # the remainder of the line (any trailing whitespace trimmed).
+#
+# Estimate is extracted per FR-035 — the first `[<digits>]` token
+# encountered in the leading run of bracketed markers (e.g. `[P]`,
+# `[US1]`) immediately following the task code. If such a token
+# exists, the digits inside it become the `<estimate>` column AND the
+# token is removed from `<description>`. Non-digit bracketed markers
+# (`[P]`, `[US1]`) are PRESERVED in the description so the operator's
+# task list keeps its spec-kit-canonical annotations. If no
+# `[<digits>]` token is found within the first 5 leading bracketed
+# tokens, the `<estimate>` column is empty and the description is
+# untouched.
 #
 # If a checklist line has no recognisable task ID token, the entire
 # remainder becomes the description and the ID is empty.
@@ -258,9 +271,79 @@ parser::tasks_in_phase() {
                 sub(/^[[:space:]]+/, "", desc)
                 sub(/[[:space:]]+$/, "", desc)
             }
-            printf "%s\t%s\t%s\n", id, state, desc
+            estimate = ""
+            preserved = ""
+            remainder = desc
+            scanned = 0
+            while (scanned < 5 && match(remainder, /^\[[^]]+\][[:space:]]*/)) {
+                token = substr(remainder, RSTART, RLENGTH)
+                inner = token
+                sub(/^\[/, "", inner)
+                sub(/\][[:space:]]*$/, "", inner)
+                if (inner ~ /^[0-9]+$/) {
+                    estimate = inner
+                    remainder = substr(remainder, RLENGTH + 1)
+                    desc = preserved remainder
+                    break
+                } else {
+                    preserved = preserved token
+                    remainder = substr(remainder, RLENGTH + 1)
+                    scanned = scanned + 1
+                }
+            }
+            printf "%s\t%s\t%s\t%s\n", id, state, desc, estimate
         }
     ' "$tasks_md"
+}
+
+# ---------------------------------------------------------------------------
+# parser::phase_estimate <tasks_md_path> <phase_index>
+#
+# Emits the sum of `[N]` Fibonacci estimate markers across every task
+# in the given task phase. Per FR-035, emits an EMPTY string (not "0")
+# when NO task in the phase carries a marker — so the caller can
+# distinguish "operator declined to estimate" from "estimated as zero
+# points". Tasks without markers contribute nothing to the sum.
+# ---------------------------------------------------------------------------
+parser::phase_estimate() {
+    local tasks_md="$1"
+    local phase_index="$2"
+    [[ -f "$tasks_md" ]] || return 0
+    local id state desc est total=0 saw_any=0
+    while IFS=$'\t' read -r id state desc est; do
+        : "${id:-}${state:-}${desc:-}"
+        if [[ -n "$est" ]]; then
+            total=$(( total + est ))
+            saw_any=1
+        fi
+    done < <(parser::tasks_in_phase "$tasks_md" "$phase_index")
+    if (( saw_any == 1 )); then
+        printf '%s\n' "$total"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# parser::spec_estimate <tasks_md_path>
+#
+# Emits the sum of `[N]` markers across every task in the entire
+# tasks.md (rollup for the spec Issue per FR-035). Empty string when
+# no task carries a marker.
+# ---------------------------------------------------------------------------
+parser::spec_estimate() {
+    local tasks_md="$1"
+    [[ -f "$tasks_md" ]] || return 0
+    local phase_index phase_name total=0 saw_any=0 sub_total
+    while IFS=$'\t' read -r phase_index phase_name; do
+        : "${phase_name:-}"
+        sub_total="$(parser::phase_estimate "$tasks_md" "$phase_index")"
+        if [[ -n "$sub_total" ]]; then
+            total=$(( total + sub_total ))
+            saw_any=1
+        fi
+    done < <(parser::task_phases "$tasks_md")
+    if (( saw_any == 1 )); then
+        printf '%s\n' "$total"
+    fi
 }
 
 # ---------------------------------------------------------------------------

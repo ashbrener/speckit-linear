@@ -918,8 +918,12 @@ reconcile::compose_subissue_checklist() {
         printf '> Source: `specs/%s-*/tasks.md` § Phase %s.\n' \
             "$feature_number" "$phase_index"
         printf '\n'
-        local id state desc box
-        while IFS=$'\t' read -r id state desc; do
+        # Tab-fields: id, state, desc, estimate. Estimate is dropped
+        # from the rendered checklist body (it's surfaced as the
+        # sub-issue's Linear `estimate` field instead per FR-035).
+        local id state desc est box
+        while IFS=$'\t' read -r id state desc est; do
+            : "${est:-}"
             case "$state" in
                 checked)   box="x" ;;
                 unchecked) box=" " ;;
@@ -946,11 +950,11 @@ reconcile::subissue_state_key() {
     local tasks_md="$1"
     local phase_index="$2"
     local total=0 checked=0
-    local id state desc
-    while IFS=$'\t' read -r id state desc; do
+    local id state desc est
+    while IFS=$'\t' read -r id state desc est; do
         # Touch unused locals so shellcheck doesn't complain about
         # destructured fields we don't reference.
-        : "${id:-}${desc:-}"
+        : "${id:-}${desc:-}${est:-}"
         total=$(( total + 1 ))
         if [[ "$state" == "checked" ]]; then
             checked=$(( checked + 1 ))
@@ -1572,6 +1576,15 @@ reconcile::sync_spec_issue() {
 
     local title="${feature_number}-${short_name}"
 
+    # FR-035: roll up [N] markers across all of tasks.md into the spec
+    # Issue's Linear estimate field. Empty when NO task carries a
+    # marker — that case is "operator declined to estimate", not
+    # "estimated as zero", so we omit estimate from the mutation
+    # entirely and let an operator-set Linear value (if any) stick.
+    local tasks_md spec_estimate
+    tasks_md="${spec_dir%/}/tasks.md"
+    spec_estimate="$(parser::spec_estimate "$tasks_md" 2>/dev/null || true)"
+
     # Compose the overview + memory + diagrams blocks into a final body.
     local memory_block diagrams_block overview_block existing_body
     memory_block="$(reconcile::render_memory_block \
@@ -1649,6 +1662,12 @@ reconcile::sync_spec_issue() {
                 }')"
         fi
 
+        # FR-035: include estimate iff some task carries an [N] marker.
+        if [[ -n "$spec_estimate" ]]; then
+            input_json="$(printf '%s' "$input_json" | jq -c \
+                --argjson e "$spec_estimate" '. + {estimate: $e}')"
+        fi
+
         local created_issue
         if ! created_issue="$(reconcile::mutate_issue_create "$input_json")"; then
             return 1
@@ -1672,6 +1691,7 @@ reconcile::sync_spec_issue() {
             description
             state { id }
             labels { nodes { name } }
+            estimate
         }
     }'
     local current_vars current_response
@@ -1681,10 +1701,11 @@ reconcile::sync_spec_issue() {
         return 1
     fi
 
-    local current_title current_description current_state_id
+    local current_title current_description current_state_id current_estimate
     current_title="$(printf '%s' "$current_response" | jq -r '.data.issue.title // ""')"
     current_description="$(printf '%s' "$current_response" | jq -r '.data.issue.description // ""')"
     current_state_id="$(printf '%s' "$current_response" | jq -r '.data.issue.state.id // ""')"
+    current_estimate="$(printf '%s' "$current_response" | jq -r '.data.issue.estimate // ""')"
 
     local current_labels
     current_labels="$(printf '%s' "$current_response" \
@@ -1750,6 +1771,14 @@ reconcile::sync_spec_issue() {
             '. + {labelIds: $labels}')"
     fi
 
+    # FR-035: estimate diff. Only write when desired is non-empty AND
+    # differs from current. Desired-empty (no [N] markers) intentionally
+    # leaves any operator-set Linear estimate intact.
+    if [[ -n "$spec_estimate" && "$current_estimate" != "$spec_estimate" ]]; then
+        update_input="$(printf '%s' "$update_input" | jq -c \
+            --argjson e "$spec_estimate" '. + {estimate: $e}')"
+    fi
+
     reconcile::mutate_issue_update "$issue_id" "$update_input" || return 1
     printf '%s\n' "$issue_id"
 }
@@ -1784,9 +1813,12 @@ reconcile::sync_task_phase_subissues() {
         [[ -n "$phase_index" ]] || continue
         local phase_label="task-phase:${phase_index}"
         local sub_title="Phase ${phase_index} — ${phase_name}"
-        local checklist
+        local checklist phase_estimate
         checklist="$(reconcile::compose_subissue_checklist \
             "$feature_number" "$phase_index" "$tasks_md")"
+        # FR-035: per-phase rollup of [N] markers → Linear sub-issue
+        # estimate. Empty when this phase has no marked tasks.
+        phase_estimate="$(parser::phase_estimate "$tasks_md" "$phase_index" 2>/dev/null || true)"
         local state_key state_uuid
         state_key="$(reconcile::subissue_state_key "$tasks_md" "$phase_index")"
         # `default_state_uuids` is added during the post-analyze
@@ -1899,6 +1931,11 @@ reconcile::sync_task_phase_subissues() {
                         }')"
                 fi
             fi
+            # FR-035: include estimate iff this phase carries [N] markers.
+            if [[ -n "$phase_estimate" ]]; then
+                sub_input="$(printf '%s' "$sub_input" | jq -c \
+                    --argjson e "$phase_estimate" '. + {estimate: $e}')"
+            fi
             local created
             if created="$(reconcile::mutate_issue_create "$sub_input")"; then
                 sub_issue_id="$(printf '%s' "$created" | jq -r '.id')"
@@ -1919,6 +1956,7 @@ reconcile::sync_task_phase_subissues() {
                     description
                     state { id }
                     labels { nodes { name } }
+                    estimate
                 }
             }'
             local sub_vars sub_response
@@ -1927,11 +1965,12 @@ reconcile::sync_task_phase_subissues() {
                 summary::add error "could not query sub-issue ${sub_issue_id}"
                 continue
             fi
-            local cur_title cur_desc cur_state cur_labels
+            local cur_title cur_desc cur_state cur_labels cur_estimate
             cur_title="$(printf '%s' "$sub_response" | jq -r '.data.issue.title // ""')"
             cur_desc="$(printf '%s' "$sub_response" | jq -r '.data.issue.description // ""')"
             cur_state="$(printf '%s' "$sub_response" | jq -r '.data.issue.state.id // ""')"
             cur_labels="$(printf '%s' "$sub_response" | jq -c '[.data.issue.labels.nodes[].name]')"
+            cur_estimate="$(printf '%s' "$sub_response" | jq -r '.data.issue.estimate // ""')"
 
             # Desired label set: preserve operator labels, ensure
             # task-phase:N is present.
@@ -1969,6 +2008,13 @@ reconcile::sync_task_phase_subissues() {
                 desired_sub_ids_json="$(reconcile::_resolve_label_ids_array "${desired_sub_names[@]}")"
                 sub_update="$(printf '%s' "$sub_update" | jq -c \
                     --argjson l "$desired_sub_ids_json" '. + {labelIds: $l}')"
+            fi
+
+            # FR-035: estimate diff for the sub-issue. Same desired-empty
+            # sticky semantics as the spec Issue path.
+            if [[ -n "$phase_estimate" && "$cur_estimate" != "$phase_estimate" ]]; then
+                sub_update="$(printf '%s' "$sub_update" | jq -c \
+                    --argjson e "$phase_estimate" '. + {estimate: $e}')"
             fi
 
             reconcile::mutate_issue_update "$sub_issue_id" "$sub_update" || continue
