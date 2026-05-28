@@ -798,25 +798,32 @@ reconcile::compose_issue_description() {
     local result="$body"
 
     # ---- memory block splice ------------------------------------------
+    # BSD-awk safe: walks $result line by line, replaces everything
+    # between the fence markers with the new fenced block. Cannot use
+    # `awk -v block=...` because BSD awk on macOS rejects multi-line -v
+    # values, silently emptying the output and deleting the block.
     if printf '%s' "$result" | grep -qF "${RECONCILE_MEMORY_BEGIN}" \
         && printf '%s' "$result" | grep -qF "${RECONCILE_MEMORY_END}"; then
-        result="$(printf '%s' "$result" | awk \
-            -v begin="${RECONCILE_MEMORY_BEGIN}" \
-            -v end="${RECONCILE_MEMORY_END}" \
-            -v block="${memory_fenced}" '
-            BEGIN { skip = 0; printed = 0 }
-            {
-                if (skip == 0 && index($0, begin) > 0) {
-                    skip = 1
-                    if (printed == 0) { print block; printed = 1 }
-                    next
-                }
-                if (skip == 1) {
-                    if (index($0, end) > 0) { skip = 0 }
-                    next
-                }
-                print
-            }')"
+        local _mem_out _mem_line _mem_skip=0 _mem_printed=0
+        _mem_out=""
+        while IFS= read -r _mem_line || [[ -n "$_mem_line" ]]; do
+            if [[ "$_mem_skip" -eq 0 && "$_mem_line" == *"${RECONCILE_MEMORY_BEGIN}"* ]]; then
+                _mem_skip=1
+                if [[ "$_mem_printed" -eq 0 ]]; then
+                    _mem_out+="${memory_fenced}"$'\n'
+                    _mem_printed=1
+                fi
+                continue
+            fi
+            if [[ "$_mem_skip" -eq 1 ]]; then
+                if [[ "$_mem_line" == *"${RECONCILE_MEMORY_END}"* ]]; then
+                    _mem_skip=0
+                fi
+                continue
+            fi
+            _mem_out+="${_mem_line}"$'\n'
+        done <<< "$result"
+        result="${_mem_out%$'\n'}"
     else
         # No fences yet — prepend.
         result="$(printf '%s\n\n%s' "$memory_fenced" "$result")"
@@ -836,23 +843,27 @@ reconcile::compose_issue_description() {
 
         if printf '%s' "$result" | grep -qF "${RECONCILE_OVERVIEW_BEGIN}" \
             && printf '%s' "$result" | grep -qF "${RECONCILE_OVERVIEW_END}"; then
-            result="$(printf '%s' "$result" | awk \
-                -v begin="${RECONCILE_OVERVIEW_BEGIN}" \
-                -v end="${RECONCILE_OVERVIEW_END}" \
-                -v block="${overview_fenced}" '
-                BEGIN { skip = 0; printed = 0 }
-                {
-                    if (skip == 0 && index($0, begin) > 0) {
-                        skip = 1
-                        if (printed == 0) { print block; printed = 1 }
-                        next
-                    }
-                    if (skip == 1) {
-                        if (index($0, end) > 0) { skip = 0 }
-                        next
-                    }
-                    print
-                }')"
+            # BSD-awk safe: bash state machine instead of awk -v block=...
+            local _ov_out _ov_line _ov_skip=0 _ov_printed=0
+            _ov_out=""
+            while IFS= read -r _ov_line || [[ -n "$_ov_line" ]]; do
+                if [[ "$_ov_skip" -eq 0 && "$_ov_line" == *"${RECONCILE_OVERVIEW_BEGIN}"* ]]; then
+                    _ov_skip=1
+                    if [[ "$_ov_printed" -eq 0 ]]; then
+                        _ov_out+="${overview_fenced}"$'\n'
+                        _ov_printed=1
+                    fi
+                    continue
+                fi
+                if [[ "$_ov_skip" -eq 1 ]]; then
+                    if [[ "$_ov_line" == *"${RECONCILE_OVERVIEW_END}"* ]]; then
+                        _ov_skip=0
+                    fi
+                    continue
+                fi
+                _ov_out+="${_ov_line}"$'\n'
+            done <<< "$result"
+            result="${_ov_out%$'\n'}"
         else
             # No overview fence yet — prepend at the very top so the
             # canonical order is overview → memory → diagrams.
@@ -870,47 +881,47 @@ reconcile::compose_issue_description() {
 
         if printf '%s' "$result" | grep -qF "${RECONCILE_DIAGRAMS_BEGIN}" \
             && printf '%s' "$result" | grep -qF "${RECONCILE_DIAGRAMS_END}"; then
-            result="$(printf '%s' "$result" | awk \
-                -v begin="${RECONCILE_DIAGRAMS_BEGIN}" \
-                -v end="${RECONCILE_DIAGRAMS_END}" \
-                -v block="${diagrams_fenced}" '
-                BEGIN { skip = 0; printed = 0 }
-                {
-                    if (skip == 0 && index($0, begin) > 0) {
-                        skip = 1
-                        if (printed == 0) { print block; printed = 1 }
-                        next
-                    }
-                    if (skip == 1) {
-                        if (index($0, end) > 0) { skip = 0 }
-                        next
-                    }
-                    print
-                }')"
+            # BSD-awk safe: bash state machine instead of awk -v block=...
+            local _dg_out _dg_line _dg_skip=0 _dg_printed=0
+            _dg_out=""
+            while IFS= read -r _dg_line || [[ -n "$_dg_line" ]]; do
+                if [[ "$_dg_skip" -eq 0 && "$_dg_line" == *"${RECONCILE_DIAGRAMS_BEGIN}"* ]]; then
+                    _dg_skip=1
+                    if [[ "$_dg_printed" -eq 0 ]]; then
+                        _dg_out+="${diagrams_fenced}"$'\n'
+                        _dg_printed=1
+                    fi
+                    continue
+                fi
+                if [[ "$_dg_skip" -eq 1 ]]; then
+                    if [[ "$_dg_line" == *"${RECONCILE_DIAGRAMS_END}"* ]]; then
+                        _dg_skip=0
+                    fi
+                    continue
+                fi
+                _dg_out+="${_dg_line}"$'\n'
+            done <<< "$result"
+            result="${_dg_out%$'\n'}"
         else
             # Append the diagrams block AFTER the memory block / body
             # so the reader sees: memory fence → operator prose →
             # diagrams pointer. Inserting after the memory end fence
             # keeps the visual order stable across re-runs.
             if printf '%s' "$result" | grep -qF "${RECONCILE_MEMORY_END}"; then
-                result="$(printf '%s' "$result" | awk \
-                    -v end="${RECONCILE_MEMORY_END}" \
-                    -v block="${diagrams_fenced}" '
-                    BEGIN { inserted = 0 }
-                    {
-                        print
-                        if (inserted == 0 && index($0, end) > 0) {
-                            print ""
-                            print block
-                            inserted = 1
-                        }
-                    }
-                    END {
-                        if (inserted == 0) {
-                            print ""
-                            print block
-                        }
-                    }')"
+                # BSD-awk safe: bash state machine instead of awk -v block=...
+                local _ia_out _ia_line _ia_inserted=0
+                _ia_out=""
+                while IFS= read -r _ia_line || [[ -n "$_ia_line" ]]; do
+                    _ia_out+="${_ia_line}"$'\n'
+                    if [[ "$_ia_inserted" -eq 0 && "$_ia_line" == *"${RECONCILE_MEMORY_END}"* ]]; then
+                        _ia_out+=$'\n'"${diagrams_fenced}"$'\n'
+                        _ia_inserted=1
+                    fi
+                done <<< "$result"
+                if [[ "$_ia_inserted" -eq 0 ]]; then
+                    _ia_out+=$'\n'"${diagrams_fenced}"$'\n'
+                fi
+                result="${_ia_out%$'\n'}"
             else
                 result="$(printf '%s\n\n%s' "$result" "$diagrams_fenced")"
             fi
