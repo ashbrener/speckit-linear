@@ -9,7 +9,7 @@ arguments:
     description: log mutations without executing them
     optional: true
   - name: retroactive
-    description: first-time-adoption mode (suppress non-authoritative warnings; implies --all)
+    description: first-time-adoption mode (FR-014) — bypasses the FR-025 write-authority gate so every spec is reconciled regardless of the current branch; implies --all
     optional: true
 ---
 
@@ -51,7 +51,7 @@ the operator-facing end-to-end walkthrough see
 |---|---|---|
 | `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Reconcile only this spec. |
 | `dry-run` | false | Log every mutation that WOULD fire; issue none. Safe inspection mode. |
-| `retroactive` | false | First-time-adoption mode (FR-014 / User Story 5). Implies `--all`; suppresses "skipped because non-authoritative" warnings. |
+| `retroactive` | false | First-time-adoption mode (FR-014 / User Story 5). Bypasses the FR-025 write-authority gate so every enumerated spec is reconciled regardless of the worktree's current branch — intended for the first reconcile after installing the bridge into a repo with existing specs. After the first successful retroactive reconcile, drop the flag and rely on per-branch reconciles. Implies `--all`; suppresses "skipped because non-authoritative" warnings and surfaces a single aggregate INFO row naming the bypass count. |
 
 Exactly one of `spec` or "all specs" is in effect — if `spec` is not
 passed, the reconciler walks every `specs/NNN-*/` directory in the
@@ -225,7 +225,11 @@ logs:
 - `non-authoritative worktree (current branch '<branch>'); read-only
   mode` — Principle IV / FR-025. This is the expected behaviour from
   `main` or an unrelated branch; the operator switches worktrees to
-  re-enable write authority. Suppressed by `retroactive=true`.
+  re-enable write authority. Suppressed by `retroactive=true`, which
+  also bypasses the gate so writes proceed for every spec (FR-014);
+  the bypass surfaces as a single aggregate row in the summary
+  (`retroactive: <N> spec(s) reconciled despite non-authoritative
+  worktree …`).
 - `linear-config.yml not found at <path>; run
   /spec-kit-linear-install` — FR-022 halt. Exit code 2.
 

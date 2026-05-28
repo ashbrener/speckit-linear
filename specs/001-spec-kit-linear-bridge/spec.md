@@ -448,6 +448,16 @@ intermediate phase transitions appearing in Linear's activity log.
   result from running every hook in sequence — without producing any
   intermediate phase artifacts (no spurious comments, no transitional
   status flips visible in Linear's activity log).
+  - The operator-facing flag that delivers this contract is
+    `--retroactive` (on `/speckit.linear.push` and `bash
+    src/reconcile.sh`). It bypasses the FR-025 write-authority gate
+    so every enumerated spec is reconciled regardless of the
+    worktree's current branch — a first reconcile after installing
+    the bridge into a repo with existing specs converges every spec
+    to its current state without per-branch checkouts. The bypass
+    surfaces as a single aggregate INFO row in the summary block so
+    the operator has an audit breadcrumb that the gate was
+    deliberately bypassed (and how often).
 - **FR-015**: For every `### Session YYYY-MM-DD` subheading the
   bridge finds under the `## Clarifications` section of `spec.md`,
   it MUST post (exactly once, idempotently) a comment on the spec
@@ -621,6 +631,13 @@ intermediate phase transitions appearing in Linear's activity log.
   workflow state it creates and write the resulting
   `workflow_state_uuids` map into the consumer repo's
   `.specify/extensions/linear/config.yml` (per FR-032).
+  Label seed scope: the `task-phase:N` family is BOOTSTRAPPED with
+  `task-phase:1..task-phase:9` at seed time but LAZY-EXTENDED at
+  reconcile time when a spec's `tasks.md` declares 10+ `## Phase N`
+  headers — `task-phase:10..N` are minted on the fly by the label
+  resolver, mirroring FR-004b's lazy-create precedent for
+  `speckit-spec:NNN`. The seed step is NEVER taught to enumerate
+  beyond 9; runtime overflow is reconcile's responsibility.
 - **FR-022**: If a consumer repo's bound workspace has not been
   seeded, sync MUST halt with a clear error that names the missing
   resources and points to the seed operation, rather than partially

@@ -206,15 +206,20 @@ ENV
 }
 
 # =============================================================================
-# Scenario 1: Mixed-state repo, --retroactive --all writes for the
-# authoritative spec and read-only-displays the others without raising
-# a skip warning (FR-025 + FR-026 + the --retroactive contract on T072).
+# Scenario 1: Mixed-state repo, --retroactive --all writes for EVERY
+# spec — including the non-authoritative one — because FR-014's
+# first-time-adoption contract requires the gate to be bypassed so a
+# fresh install converges every spec without per-branch checkouts.
+# The aggregate INFO row in the summary names the bypass count and the
+# per-spec "skipped because non-authoritative" warning rows stay
+# suppressed (the bypass replaces them, it doesn't sit alongside them).
 # =============================================================================
-@test "retroactive: mixed-state repo writes authoritative spec only, others read-only" {
+@test "retroactive: --retroactive bypasses FR-025 gate for every spec (FR-014)" {
     integration::skip_unless_enabled
     # 002-multi-phase has spec.md + plan.md + tasks.md → Tasking phase.
-    # We're authoritative for 002; spec 001 (specifying-only) goes
-    # through the read-only display path.
+    # We're checked out on 002's feature branch; spec 001 (specifying-
+    # only) would normally enter read-only mode but --retroactive
+    # forces the write path for it too.
     retroactive::setup_multi_spec_sandbox '002-multi-phase'
 
     run integration::run_reconcile --retroactive --all
@@ -222,11 +227,11 @@ ENV
     # query response trips reconcile's FR-002 Project Status warning
     # path which promotes the exit code to 1 across the integration
     # suite (same as us1-fresh-reconcile.bats). The retroactive
-    # behaviour we care about (correct phase label, no rogue writes)
+    # behaviour we care about (writes for every spec, bypass INFO row)
     # lands BEFORE that promotion.
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 
-    # ---- spec 002 (authoritative) writes ----
+    # ---- spec 002 (authoritative under the default gate) writes ----
     # FR-003 mandates the phase label mirrors the inferred lifecycle —
     # for fixture 002 that is `tasking`.
     local tasking_calls
@@ -234,36 +239,36 @@ ENV
     [ "$tasking_calls" -ge 1 ]
 
     # FR-004b: the spec identity label is stamped on creation.
-    local spec_label_calls
-    spec_label_calls="$(retroactive::count_calls 'speckit-spec:002')"
-    [ "$spec_label_calls" -ge 1 ]
+    local spec002_label_calls
+    spec002_label_calls="$(retroactive::count_calls 'speckit-spec:002')"
+    [ "$spec002_label_calls" -ge 1 ]
 
-    # ---- spec 001 (non-authoritative) MUST NOT write ----
-    # SC-009 / FR-025: no MUTATION body references the 001 spec label.
-    # Reads are allowed (the read-only-display path calls
-    # query-LocateSpecIssue which legitimately embeds the label as a
-    # filter); writes are the FR-025 prohibition.
+    # ---- spec 001 (non-authoritative) ALSO writes under --retroactive --
+    # FR-014: the bypass is the whole point of the flag. The previous
+    # implementation only suppressed the WARNING and left the gate
+    # active, which dogfooded as "first reconcile produces zero
+    # mutations" — exactly the bug this test now pins.
     local spec001_mutations
     spec001_mutations="$(retroactive::count_mutations_containing 'speckit-spec:001')"
-    [ "$spec001_mutations" -eq 0 ]
+    [ "$spec001_mutations" -ge 1 ]
 
     # ---- summary contract ----
-    # FR-014 / T072: --retroactive MUST suppress the "skipped because
-    # non-authoritative" entry in the SUMMARY (reconcile.sh
-    # lines 1466-1473 — `reconcile::log` instead of `summary::add
-    # skipped` when ARG_RETROACTIVE == 1). The informational
-    # `spec-kit-linear: ...` log line about spec 001 may still appear
-    # before the `===== speckit.linear summary =====` banner.
+    # FR-014: per-spec "skipped because non-authoritative" warnings
+    # stay suppressed AND the bypass surfaces as a single aggregate
+    # INFO row naming the count, so the operator has a clear breadcrumb
+    # that the FR-025 gate was deliberately bypassed (and how often).
     [[ "$output" == *"speckit.linear summary"* ]]
     [[ "$output" == *"retroactive"* ]]
-    # Slice the structured-summary block (lines between the two
-    # `====` banners) and prove the suppression contract on that
-    # surface alone.
+    # Slice the structured-summary block (lines between the two `====`
+    # banners) and prove the contract on that surface alone.
     local summary_block
     summary_block="$(printf '%s\n' "$output" \
         | awk '/===== speckit\.linear summary =====/,/^==================================$/')"
-    [[ "$summary_block" != *"spec 001"* ]]
-    [[ "$summary_block" != *"non-authoritative"* ]]
+    # Aggregate INFO row landed in the warnings section.
+    [[ "$summary_block" == *"retroactive:"* ]]
+    [[ "$summary_block" == *"non-authoritative"* ]]
+    # Per-spec skip rows MUST NOT appear — the bypass replaces them.
+    [[ "$summary_block" != *"spec 001: non-authoritative"* ]]
 }
 
 # =============================================================================
