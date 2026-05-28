@@ -11,7 +11,7 @@
 # `.claude/skills/spec-kit-linear-<sub>/`.
 #
 # Mirrors the field shape of the sibling extension at
-# /Users/ashbrener/Code/PP/spec-kit-red-team/extension.yml. Field names that
+# a sibling extension repo/extension.yml. Field names that
 # the spec-kit framework cares about are spelled exactly as that extension
 # spells them. Informational fields (e.g. `config:`) are still included
 # because operators read this manifest to understand the extension.

@@ -218,7 +218,7 @@ The Action only fires when installed in the repo's default branch. After `/speck
 
 ## Acknowledgements
 
-Originally designed as the consolidated memory layer for an operator running spec-kit across `b9-backend`, `b9-frontend`, `project-arc`, `wingman`, and `spec-kit-red-team` simultaneously. The reconcile-based architecture (Principle II) follows Kubernetes' control-loop pattern: the bridge does not react to events; it converges state on a fixed schedule (every hook fire) to whatever the filesystem currently says.
+Originally designed as the consolidated memory layer for an operator running spec-kit across several repositories simultaneously. The reconcile-based architecture (Principle II) follows Kubernetes' control-loop pattern: the bridge does not react to events; it converges state on a fixed schedule (every hook fire) to whatever the filesystem currently says.
 
 ## License
 

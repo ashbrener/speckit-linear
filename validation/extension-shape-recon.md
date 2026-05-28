@@ -1,12 +1,12 @@
 # Spec-Kit Extension Shape — Recon for spec-kit-linear
 
-Source-of-truth research for the file/directory contract `specify extension add linear` requires. Built from (1) `~/Code/PP/spec-kit-red-team/` as the sibling extension, (2) the bundled `speckit-taskstoissues` skill, (3) the specify-cli Python source at `~/.local/share/uv/tools/specify-cli/lib/python3.13/site-packages/specify_cli/`.
+Source-of-truth research for the file/directory contract `specify extension add linear` requires. Built from (1) `a sibling extension repo/` as the sibling extension, (2) the bundled `speckit-taskstoissues` skill, (3) the specify-cli Python source at `~/.local/share/uv/tools/specify-cli/lib/python3.13/site-packages/specify_cli/`.
 
 ---
 
 ## 1. speckit-red-team — full extension shape
 
-Found at `/Users/ashbrener/Code/PP/spec-kit-red-team/` (the `~/Code/AI/` path didn't exist).
+Found at `a sibling extension repo/` (the a local path path didn't exist).
 
 ### Top-level layout
 
