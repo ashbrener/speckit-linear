@@ -68,38 +68,27 @@ Lifecycle phases tracked on the spec Issue's workflow state:
 
 ## How sync works
 
-Three triggers keep Linear in sync. All three converge to the same state — they're independently idempotent, so any one of them alone is enough for correctness.
+You keep writing specs the way you always have. Linear keeps up on its own.
 
 ```mermaid
 graph LR
-    subgraph Consumer["Consumer repo (filesystem · source of truth)"]
-        FS[specs/NNN-feature/<br/>spec.md · plan.md · tasks.md]
-        Hooks[.specify/extensions.yml<br/>after_* hooks]
-        GHA[.github/workflows/<br/>speckit-linear-sync.yml]
-        Cmds[On-demand commands<br/>speckit.linear.push/pull/status]
+    subgraph Local["Your work, on disk"]
+        Specs["📝 Your specs<br/>(the markdown you write)"]
     end
 
-    subgraph Bridge["speckit-linear bridge"]
-        Reconcile[Reconciler<br/>reads FS · pushes Linear]
+    subgraph Mirror["Where it shows up"]
+        Linear["📋 Linear<br/>one issue per spec"]
     end
 
-    subgraph External["External services"]
-        Linear[(Linear workspace<br/>Project · Issues · Sub-issues)]
-        GH[GitHub<br/>pull_request events]
-    end
-
-    Hooks -- "every /speckit-* command" --> Reconcile
-    Cmds  -- "manual recovery / inspection" --> Reconcile
-    Reconcile -- "reads" --> FS
-    Reconcile -- "writes via MCP" --> Linear
-
-    GH -- "PR opened / ready / merged" --> GHA
-    GHA -- "direct GraphQL · UUID lookup" --> Linear
+    Specs -- "every spec-kit command" --> Linear
+    Specs -. "a PR merges on GitHub" .-> Linear
 ```
 
-- **After-hook path (Layer D, primary).** `specify extension add linear` wires `after_specify`, `after_clarify`, `after_plan`, `after_tasks`, `after_implement`, and `after_analyze` into `.specify/extensions.yml`. Every `/speckit-*` invocation re-runs the full reconciler, so Linear catches up automatically without you remembering a sync step.
-- **Webhook path (Layer E, real-time merge detection).** A GitHub Action installed in each consumer repo fires on `pull_request` events (`opened`, `ready_for_review`, `closed` with `merged: true`) and calls Linear's GraphQL API directly to flip the spec Issue's workflow state. This is what gives you sub-minute "Merged" updates without running any local command.
-- **On-demand path (escape hatch).** `speckit.linear.push`, `speckit.linear.pull`, and `speckit.linear.status` let you trigger reconciliation manually — useful after a missed hook, after editing `tasks.md` outside a `/speckit-*` command, or just to inspect Linear's current view from the CLI.
+- **The everyday case.** You run `/speckit-plan` (or specify, clarify, tasks, implement, analyze) and Linear catches up in the same breath. No extra step, no separate sync command, no remembering.
+- **The big moments.** A pull request lands on GitHub and the matching Linear issue flips to **Merged** within a minute — even if your laptop is closed.
+- **The escape hatches.** Edited `tasks.md` by hand? Want to peek at what Linear thinks without writing? Run `speckit.linear.push`, `.pull`, or `.status` to reconcile or inspect on demand.
+
+Your markdown is always the source of truth. Linear is the pane of glass you stand back and look through.
 
 ## Phase mapping
 
