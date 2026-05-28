@@ -120,6 +120,17 @@ readonly RECONCILE_SUBISSUE_HEADER='> **Read-only mirror of `tasks.md` — ticks
 # contracts/linear-graphql-mutations.md §2.2.
 readonly RECONCILE_SPECKIT_LABEL_COLOR="#9CA3AF"
 
+# Deterministic color for lazy-created `task-phase:N` workspace labels
+# when the seeded bootstrap range (`task-phase:1..task-phase:9`,
+# FR-021) is exhausted by a spec whose tasks.md declares 10+ phases.
+# The seed step itself lets Linear pick a default color for the
+# bootstrap nine; we use the same neutral gray as the speckit-spec
+# auto-create path so the overflow labels read as "system, not
+# operator-curated" in Linear's UI. Mirrors FR-004b's lazy-create
+# precedent — the architectural fix for >9-phase specs lives at
+# reconcile time (label resolver), not seed time.
+readonly RECONCILE_TASK_PHASE_LABEL_COLOR="#9CA3AF"
+
 # Module-level cache: label name → UUID. Populated lazily by
 # reconcile::_resolve_label_id so the same name resolved across N
 # specs in a single --all sweep hits Linear at most once.
@@ -979,23 +990,28 @@ reconcile::subissue_state_key() {
 # Auto-create policy (per contracts/linear-graphql-mutations.md §2.2):
 #   * `speckit-spec:NNN` — created lazily on first reconcile of a spec
 #     (`allow_create=1`). Color: RECONCILE_SPECKIT_LABEL_COLOR.
-#   * `phase:*` / `task-phase:*` — MUST already exist (seeded by
-#     `speckit.linear.seed`). Missing here is a hard error per FR-022
-#     ("unseeded halts"); reconciler aggregates the failure and points
-#     at the seed remediation.
+#   * `task-phase:N` (N ≥ 1) — the seed step bootstraps `task-phase:1`
+#     through `task-phase:9` (FR-021), but specs with 10+ phases need
+#     `task-phase:10..N` minted lazily here. Mirrors the speckit-spec
+#     auto-create shape (`allow_create=1`); same workspace-scope and
+#     idempotency semantics. Color: RECONCILE_TASK_PHASE_LABEL_COLOR.
+#   * `phase:*` — MUST already exist (seeded by `speckit.linear.seed`).
+#     Missing is a hard error per FR-022 ("unseeded halts"); reconciler
+#     aggregates the failure and points at the seed remediation.
 #   * Any other label (operator-added) — looked up but never created.
 # =============================================================================
 
-# reconcile::_label_create_speckit <name>
+# reconcile::_label_create_workspace <name> <color>
 #   Create a workspace-scoped (teamId omitted) issue label and echo its
-#   UUID. Used only for `speckit-spec:NNN` per the auto-create policy
-#   above. Returns non-zero (and records to summary) on transport or
-#   GraphQL failure.
-reconcile::_label_create_speckit() {
+#   UUID. Used by every lazy-create entry point above (`speckit-spec:NNN`
+#   and the `task-phase:N` overflow). Returns non-zero (and records to
+#   summary) on transport or GraphQL failure.
+reconcile::_label_create_workspace() {
     local name="$1"
+    local color="$2"
 
     if (( ARG_DRY_RUN == 1 )); then
-        reconcile::log "DRY-RUN issueLabelCreate name=${name} color=${RECONCILE_SPECKIT_LABEL_COLOR}"
+        reconcile::log "DRY-RUN issueLabelCreate name=${name} color=${color}"
         summary::add created "issueLabelCreate ${name} (dry-run)"
         # Synthesize a stable placeholder so downstream array-builds work
         # in dry-run. Matches the dry-run pattern used by issueCreate.
@@ -1003,7 +1019,7 @@ reconcile::_label_create_speckit() {
         return 0
     fi
 
-    local mutation='mutation CreateSpeckitLabel($input: IssueLabelCreateInput!) {
+    local mutation='mutation CreateWorkspaceLabel($input: IssueLabelCreateInput!) {
         issueLabelCreate(input: $input) {
             success
             issueLabel { id name }
@@ -1014,7 +1030,7 @@ reconcile::_label_create_speckit() {
     local input_json vars
     input_json="$(jq -nc \
         --arg name "$name" \
-        --arg color "$RECONCILE_SPECKIT_LABEL_COLOR" \
+        --arg color "$color" \
         '{name: $name, color: $color}')"
     vars="$(jq -nc --argjson input "$input_json" '{input: $input}')"
 
@@ -1093,7 +1109,15 @@ reconcile::_resolve_label_id() {
 
     # Not found. Branch on whether the caller permits auto-create.
     if [[ "$allow_create" == "1" ]]; then
-        if ! id="$(reconcile::_label_create_speckit "$name")"; then
+        # Dispatch the color by family. Both lazy-create paths use the
+        # same neutral gray (signals "system label, not operator-curated"),
+        # but the constant naming keeps the two policies distinct so a
+        # future tweak to one doesn't silently move the other.
+        local create_color="$RECONCILE_SPECKIT_LABEL_COLOR"
+        if [[ "$name" == task-phase:* ]]; then
+            create_color="$RECONCILE_TASK_PHASE_LABEL_COLOR"
+        fi
+        if ! id="$(reconcile::_label_create_workspace "$name" "$create_color")"; then
             return 1
         fi
         if [[ -z "$id" ]]; then
@@ -1106,15 +1130,20 @@ reconcile::_resolve_label_id() {
         return 0
     fi
 
-    # phase:* / task-phase:* (or any operator label) missing → FR-022
-    # halt-like surface. We don't exit(2) here because one missing
-    # label shouldn't kill the whole --all sweep; we record the gap,
-    # promote to exit 1, and the per-spec caller drops this label from
-    # its set so the mutation can still issue for the labels that DO
-    # resolve. The summary names the offending label and points at
-    # the seed remediation.
-    if [[ "$name" == phase:* || "$name" == task-phase:* ]]; then
-        summary::add error "label '${name}' not found in Linear; run \`speckit.linear.seed\` to create phase:* / task-phase:* labels"
+    # phase:* (or any operator label) missing → FR-022 halt-like surface.
+    # We don't exit(2) here because one missing label shouldn't kill the
+    # whole --all sweep; we record the gap, promote to exit 1, and the
+    # per-spec caller drops this label from its set so the mutation can
+    # still issue for the labels that DO resolve. The summary names the
+    # offending label and points at the seed remediation.
+    #
+    # Note: `task-phase:*` is intentionally absent from this branch.
+    # The `_resolve_label_ids_array` caller below routes `task-phase:*`
+    # through the `allow_create=1` path above so the bootstrap-9 seed
+    # set can be lazy-extended to `task-phase:10..N` for specs with
+    # 10+ phases (HURRI dogfood bug, mirrors FR-004b precedent).
+    if [[ "$name" == phase:* ]]; then
+        summary::add error "label '${name}' not found in Linear; run \`speckit.linear.seed\` to create phase:* labels"
     else
         summary::add error "label '${name}' not found in Linear; create it manually or remove it from the spec"
     fi
@@ -1124,12 +1153,14 @@ reconcile::_resolve_label_id() {
 
 # reconcile::_resolve_label_ids_array <name1> [<name2> ...]
 #   Resolve each label name → UUID and echo a JSON array of UUIDs.
-#   `speckit-spec:*` names take the auto-create path; everything else
-#   is lookup-only. Names that fail to resolve are SKIPPED from the
-#   output (with a summary::add error already recorded by
-#   _resolve_label_id) so the caller's mutation still fires for the
-#   labels that DID resolve — partial progress beats whole-spec halt
-#   (FR-024).
+#   `speckit-spec:*` and `task-phase:*` names take the auto-create path;
+#   everything else is lookup-only. (`task-phase:*` is bootstrapped 1..9
+#   by seed per FR-021 but lazy-extended at reconcile time so specs with
+#   10+ phases don't silently drop sub-issues — HURRI dogfood bug.)
+#   Names that fail to resolve are SKIPPED from the output (with a
+#   summary::add error already recorded by _resolve_label_id) so the
+#   caller's mutation still fires for the labels that DID resolve —
+#   partial progress beats whole-spec halt (FR-024).
 #
 #   Empty input → "[]".
 reconcile::_resolve_label_ids_array() {
@@ -1137,7 +1168,7 @@ reconcile::_resolve_label_ids_array() {
     local name id allow_create
     for name in "$@"; do
         [[ -n "$name" ]] || continue
-        if [[ "$name" == speckit-spec:* ]]; then
+        if [[ "$name" == speckit-spec:* || "$name" == task-phase:* ]]; then
             allow_create=1
         else
             allow_create=0
@@ -2040,9 +2071,14 @@ reconcile::sync_task_phase_subissues() {
 
         local sub_issue_id=""
         if (( sub_count == 0 )); then
-            # Create. task-phase:* is seed-owned — if it's missing,
-            # _resolve_label_ids_array surfaces an error and we skip
-            # this sub-issue (the labels_json comes back as `[]`).
+            # Create. `task-phase:N` is bootstrapped 1..9 by seed
+            # (FR-021) but lazy-extended at reconcile time for specs
+            # with 10+ phases — _resolve_label_ids_array routes the
+            # label through the same auto-create path that
+            # speckit-spec:NNN uses (FR-004b precedent). If
+            # auto-create fails (transport error etc.) the labels_json
+            # falls back to `[]` and the sub-issue is still created so
+            # the operator can attach the label manually.
             local labels_json
             labels_json="$(reconcile::_resolve_label_ids_array "$phase_label")"
 

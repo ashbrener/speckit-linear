@@ -631,6 +631,13 @@ intermediate phase transitions appearing in Linear's activity log.
   workflow state it creates and write the resulting
   `workflow_state_uuids` map into the consumer repo's
   `.specify/extensions/linear/config.yml` (per FR-032).
+  Label seed scope: the `task-phase:N` family is BOOTSTRAPPED with
+  `task-phase:1..task-phase:9` at seed time but LAZY-EXTENDED at
+  reconcile time when a spec's `tasks.md` declares 10+ `## Phase N`
+  headers — `task-phase:10..N` are minted on the fly by the label
+  resolver, mirroring FR-004b's lazy-create precedent for
+  `speckit-spec:NNN`. The seed step is NEVER taught to enumerate
+  beyond 9; runtime overflow is reconcile's responsibility.
 - **FR-022**: If a consumer repo's bound workspace has not been
   seeded, sync MUST halt with a clear error that names the missing
   resources and points to the seed operation, rather than partially
