@@ -31,8 +31,9 @@ repo bound to the operator's workspace, grouped by Project).
 
 **Direction**: read-only. Talks to Linear ONLY via `graphql::query`;
 issues zero `issueCreate` / `issueUpdate` / `commentCreate` / any
-other mutation. Even from an authoritative worktree, this command
-MUST NOT write — it is an inventory tool, full stop.
+other mutation. Even from a worktree that could write (under Principle
+IV v2.0.0 any worktree can), this command MUST NOT write — it is an
+inventory tool, full stop.
 **Authority**: not gated. Runs from any worktree, on any branch
 (detached HEAD included), and (in `--workspace-wide` mode) from any
 directory inside the consumer repo. Reports Linear's view without
@@ -245,7 +246,7 @@ This command implements (in whole or in part):
   spec-Issue lookup key.
 - **FR-022** — config-load halt with operator-actionable remediation.
 - **FR-023** — structured `summary::emit` block on stderr.
-- **FR-026** — read-only direction; the bridge never writes from this
-  command even from an authoritative worktree.
+- **FR-026 / FR-060** — read-only direction; the bridge never writes
+  from this command, from any worktree (Principle IV v2.0.0).
 - **FR-034** — operator assignee surfaced in the inventory.
 - **FR-035** — Fibonacci `[N]` estimate rollup surfaced in the inventory.

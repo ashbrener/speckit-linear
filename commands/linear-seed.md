@@ -43,10 +43,10 @@ write is the `linear-config.yml` update, which is also bridge-owned
 (Principle I — filesystem-is-truth holds: the operator never has to
 hand-edit the UUIDs).
 
-**Authority**: write-authority gate does NOT apply here — the seed is
-workspace-level configuration, not per-spec mutation, so any worktree
-that has the bridge installed can run it (Principle IV scopes only
-spec-level writes).
+**Authority**: write-authority considerations do NOT apply here — the
+seed is workspace-level configuration, not per-spec mutation, so any
+worktree that has the bridge installed can run it (Principle IV —
+drift-aware in v2.0.0 — scopes only spec-level writes).
 
 The deterministic work happens in `src/seed.sh`; this command is the
 AI-agent entry point that runs the shell and surfaces its output. The

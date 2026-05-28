@@ -1,42 +1,73 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (uninitialised template) → 1.0.0
-Rationale: Initial ratification — first concrete constitution for the
-spec-kit-linear project, derived from BRIEF.md, spec 001, and the
-linear-mcp-capability-check validation.
+Version change: 1.0.0 → 2.0.0
+Amendment date: 2026-05-28
 
-Principles defined (initial ratification, no prior names to rename):
-  I.    Filesystem Is The Single Source of Truth
-  II.   Reconcile, Never Event-Push
-  III.  Layered Idempotency (D + E)
-  IV.   Write-Authority Follows The Worktree
-  V.    UUID-Based Binding, Per-Repo Config
-  VI.   OAuth-First, Keys-At-The-Edges
-  VII.  Memory-Just-Works, Escape Hatches Beside It
-  VIII. Surface, Don't Enforce — Observable Failure
+Rationale (why MAJOR, not MINOR): This amendment REDEFINES an existing
+principle and REMOVES a constitutional rule, which is backward-incompatible
+by the versioning rules below ("MAJOR: backward-incompatible changes —
+removing a principle, redefining the data-model mapping, eliminating a
+layer"). Principle IV's v1.0.0 rule made the branch-gate enforcement
+constitutional ("Reconcile MUST detect the active branch and gate
+spec-level mutations on the `<NNN>-...` match"). This amendment DELETES
+that gate and replaces it with a drift-aware, surface-don't-enforce model.
+Any plan, command, or template previously relying on "non-authoritative
+worktrees are read-only" no longer holds — that is a breaking change to a
+stated principle rule, so MAJOR (not a mere additive MINOR expansion).
 
-Added sections:
-  - Core Principles (8 principles)
-  - Architectural Constraints (data-model + layer boundaries)
-  - Operational Workflow (install / seed / sync / recovery)
-  - Governance (amendment + versioning + compliance)
+Principle redefined:
+  IV. "Write-Authority Follows The Worktree" (v1.0.0, branch-gate)
+   →  "Write-Authority Follows The Filesystem (Drift-Aware)" (v2.0.0)
+  - REMOVED: the hard branch-gate rule (FR-025 enforcement: only the
+    worktree on `<NNN>-...` may write; all other worktrees read-only).
+  - ADDED: any worktree MAY write; the filesystem (most-recent commit
+    touching `specs/NNN-feature/`) is the authority (consistent with
+    Principle I); backward-drift is SURFACED as a warning but MUST NOT
+    block the write (Principle VIII).
+  - WHY: real dogfood proved the branch-gate too strict for three
+    legitimate workflows — merged specs (feature branch deleted; a
+    merged spec stayed stuck on "Implementing" because main could not
+    grant write), retroactive adoption, and squash-merge/trunk-based
+    development on main. The v0.1.1 `--retroactive` stopgap is deprecated
+    to a no-op once spec 003 lands.
+  - Implemented by spec 003 (003-drift-aware-authority), FR-051..FR-064.
 
-Removed sections: none (template was empty)
+Other principles (I, II, III, V, VI, VII, VIII): unchanged.
 
-Templates requiring updates:
-  ✅ .specify/templates/plan-template.md — Constitution Check is a
-     placeholder; will be wired to these principles when /speckit-plan
-     first runs against a feature. No edit needed now.
-  ✅ .specify/templates/spec-template.md — mandatory sections align; no
-     change required.
-  ✅ .specify/templates/tasks-template.md — already uses canonical
-     `## Phase N: <Name>` terminology (Principle VIII); no change.
-  ✅ .specify/templates/checklist-template.md — generic; nothing to sync.
+Sections touched by this amendment:
+  - Core Principles → Principle IV (full rewrite) + principles index
+  - Operational Workflow → Sync paragraph (drop "read-only for any spec
+    whose feature branch is not the active worktree branch")
+  - Version footer (1.0.0 → 2.0.0; Last Amended 2026-05-28)
+
+Templates / dependent docs propagated (forward-facing only):
+  ✅ CONTRIBUTING.md — principle name in the principles list.
+  ✅ README.md — "write-authority follows the worktree" invariant +
+     the "non-authoritative worktree" WARNING troubleshooting entry.
+  ✅ commands/linear-push.md — gate description → drift-warn description;
+     `--retroactive` reframed as deprecated no-op alias.
+  ✅ commands/linear-status.md — "authority status" → "drift status".
+  ✅ commands/linear-seed.md — Principle IV scope reference reworded.
+  ✅ .specify/templates/plan-template.md — Constitution Check is a generic
+     placeholder with no Principle IV / FR-025 reference; no edit needed.
+  ✅ .specify/templates/{spec,tasks,checklist,constitution}-template.md —
+     no Principle IV / FR-025 references; nothing to sync.
   ✅ .claude/skills/speckit-constitution/SKILL.md — upstream skill file,
      do not modify.
 
-Follow-up TODOs: none deferred.
+Deliberately NOT modified (point-in-time historical records):
+  ⛔ specs/001-spec-kit-linear-bridge/** — spec 001 is the historical
+     record that DEFINED FR-025 (the branch-gate). It is a point-in-time
+     artifact, not forward-facing guidance; spec 003 supersedes FR-025.
+  ⛔ specs/002-install-ergonomics/** — historical artifact.
+  ⛔ validation/constitution-recheck-*.md — point-in-time recheck records.
+  ⛔ CHANGELOG.md — historical release log (records the v0.1.1 FR-025
+     behavior as shipped; not rewritten).
+
+Follow-up TODOs: spec 003's implementation PR is a HARD DEPENDENCY on this
+amendment (its /speckit-plan Constitution Check gate must see Principle IV
+v2.0.0, or it would flag the FR-025 removal as a violation).
 -->
 
 # spec-kit-linear Constitution
@@ -45,7 +76,8 @@ The non-negotiable principles that govern how the spec-kit ↔ Linear
 bridge is built, installed, and operated. Every functional requirement
 in `specs/001-spec-kit-linear-bridge/spec.md` traces to one of these
 principles; every future spec MUST be checked against them before
-`/speckit-plan` lands.
+`/speckit-plan` lands. (Principle IV was redefined in v2.0.0 — see the
+Sync Impact Report above and spec 003, `003-drift-aware-authority`.)
 
 ## Core Principles
 
@@ -123,27 +155,66 @@ separation, give us responsive UX without sacrificing recoverability.
   acceptable PROVIDED Layer D reconciles on its next run. The bridge
   MUST NOT report webhook health out-of-band.
 
-### IV. Write-Authority Follows The Worktree
+### IV. Write-Authority Follows The Filesystem (Drift-Aware)
 
-For any given spec, the ONLY worktree authorised to mutate that
-spec's Linear state is the one currently checked out on its feature
-branch (`<NNN>-...`). Any reconcile invoked from another worktree
-(on `main`, an unrelated branch, detached HEAD) is **read-only with
-respect to that spec**: it MAY display Linear's current state but
-MUST NOT write.
+For any given spec, the authority for what Linear should reflect is
+the **filesystem state of the invoking worktree** (Principle I). ANY
+worktree MAY write a spec's Linear state — the branch name is a
+HEURISTIC for "who has the latest", not a gate. The worktree holding
+the most recent commit touching `specs/NNN-feature/` holds the
+freshest state; that commit timestamp (a filesystem-evident key per
+Principle II, never raw file mtime) identifies the
+canonical-right-now worktree.
 
-**Rationale**: Operators routinely run multiple worktrees against
-the same repo. A naive sync from a stale worktree would regress
-Linear's state for a spec being progressed elsewhere. Tying write
-authority to the feature branch makes worktree topology safe by
-construction.
+The bridge MUST detect **backward-drift** and SURFACE it, but MUST
+NOT block the write. Backward-drift is when Linear's recorded
+lifecycle phase is strictly further along than the disk-inferred
+phase, OR Linear's `updatedAt` is newer than the spec directory's
+last commit beyond a clock-skew tolerance. On backward-drift, an
+interactive session prompts the operator to proceed (overwrite Linear
+from disk) or abort; a non-interactive session proceeds-and-warns
+(records a WARNING row) unless an override flag selects abort. The
+operator decides — the bridge surfaces, it does not enforce
+(Principle VIII).
+
+**Rationale**: The branch-gate model (v1.0.0) tied write authority to
+the `<NNN>-...` feature branch and made every other worktree
+read-only. Real dogfood proved this too strict: merged specs (feature
+branch deleted — a merged spec stayed stuck showing "Implementing"
+because `main` could not be granted write to record the post-merge
+view), retroactive adoption (no worktree on any feature branch, so
+nothing converged — the v0.1.1 `--retroactive` stopgap), and
+squash-merge / trunk-based teams developing on `main` all legitimately
+need to write from non-feature branches. The filesystem is already
+the source of truth (Principle I); the branch name is evidence about
+recency, not a substitute for the evidence itself. When heuristic and
+evidence disagree, trust the evidence and let the operator decide.
 
 **Rules**:
-- Reconcile MUST detect the active branch and gate spec-level
-  mutations on the `<NNN>-...` match (spec FR-025).
-- Non-authoritative invocations MUST still surface the spec's
-  current Linear state (spec FR-026).
+- Branch name MUST NOT gate spec-level writes. This SUPERSEDES the
+  v1.0.0 FR-025 enforcement rule (only the `<NNN>-...` worktree may
+  write; all others read-only). Implemented by spec 003 FR-051.
+- The backward-drift signal MUST be computed per spec from (a)
+  lifecycle-phase ordering (Linear phase vs disk-inferred phase) and
+  (b) recency (spec-dir last-commit time vs Linear `updatedAt`, with a
+  clock-skew tolerance); either firing raises the warning (FR-052).
+- Recency MUST derive from the spec-directory git-commit timestamp,
+  never raw mtime, because mtime does not survive clone / checkout /
+  worktree creation (FR-053).
+- Backward-drift MUST be surfaced as a named WARNING row on every
+  reconcile where Linear is ahead, naming the spec, the disk-inferred
+  phase, Linear's phase, and which signal(s) fired (FR-054). It MUST
+  NOT block: interactive prompts proceed/abort (FR-055);
+  non-interactive proceeds-and-warns unless `--on-drift=abort`
+  (FR-056). An operator abort leaves Linear unchanged (FR-057).
+- Reconcile MUST still SURFACE a spec's current Linear state from any
+  worktree without requiring a write. FR-026's surfacing obligation is
+  RETAINED; only its coupling to the now-removed write gate is dropped
+  (FR-060).
 - Layer E is exempt: PR head ref already implies authority.
+- The `--retroactive` flag (v0.1.1 stopgap, FR-014) is deprecated to a
+  no-op alias once spec 003 lands — writing from any branch is now the
+  default, so the flag neither errors nor changes behavior (FR-061).
 
 ### V. UUID-Based Binding, Per-Repo Config
 
@@ -289,13 +360,14 @@ capture each state's UUID → write `workflow_state_uuids` into the
 per-repo config. Safe to re-run.
 
 **Sync**: auto on every `after_*` hook; available on-demand via
-`speckit.linear.push`. Idempotent. Read-only for any spec whose
-feature branch is not the active worktree branch (Principle IV).
+`speckit.linear.push`. Idempotent. Writes from any worktree
+(Principle IV, drift-aware); on backward-drift it surfaces a warning
+and — interactively — prompts proceed/abort, but never blocks the
+write outright.
 
 **Recovery**: on-demand commands (`speckit.linear.push`,
 `speckit.linear.pull`, `speckit.linear.status`) are the documented
-path for missed hooks, non-authoritative-worktree inspection, and
-post-incident audit.
+path for missed hooks, drift inspection, and post-incident audit.
 
 ## Governance
 
@@ -322,7 +394,9 @@ description names the principle(s) added, removed, or redefined.
 - **PATCH**: clarifications, wording, typo fixes.
 
 **Operator may revise** (judgement calls flagged for future
-reconsideration): none for v1.0.0. Every principle here derives from
-either an explicit spec-001 clarification or the validation outputs.
+reconsideration): none for v2.0.0. Every principle here derives from
+either an explicit spec clarification or the validation outputs;
+Principle IV's v2.0.0 redefinition derives from spec 003
+(`003-drift-aware-authority`) and the downstream dogfood evidence.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-27 | **Last Amended**: 2026-05-27
+**Version**: 2.0.0 | **Ratified**: 2026-05-27 | **Last Amended**: 2026-05-28

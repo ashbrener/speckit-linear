@@ -166,7 +166,7 @@ stateDiagram-v2
 
 This is non-negotiable: every spec-kit principle that the bridge inherits depends on this invariant. Operator-side annotations that need to survive belong in **Linear comments** (which the bridge never overwrites), not in the Issue description body or checklist.
 
-The other invariant worth knowing: **write-authority follows the worktree** (FR-025). A spec checked out in multiple worktrees only writes from the worktree on its feature branch. Every other worktree's sync is read-only for that spec, so you cannot regress Linear by reconciling from a stale `main` worktree.
+The other invariant worth knowing: **write-authority follows the filesystem** (Constitution Principle IV, drift-aware — superseding the v1.0.0 branch-gate; see spec [`003-drift-aware-authority`](./specs/003-drift-aware-authority/spec.md)). Any worktree may write a spec's Linear state — the branch name is a heuristic for "who has the latest", not a gate. When the worktree you reconcile from looks *older* than Linear's current state (backward-drift — Linear's lifecycle phase is further along, or its `updatedAt` is newer than your spec dir's last commit), the bridge surfaces a warning and lets you decide: interactively it prompts proceed/abort; non-interactively it proceeds-and-warns unless you pass `--on-drift=abort`. It never silently regresses Linear, but it no longer refuses to write from `main`.
 
 ## Configuration
 
@@ -193,9 +193,9 @@ The repo hasn't been bound to a Linear workspace yet. Run `/speckit.linear.insta
 
 `workflow_state_uuids` is absent or empty in `linear-config.yml`. The seed step creates the 9 workflow states + labels and writes their UUIDs into config. Safe to re-run.
 
-### `WARNING: non-authoritative worktree — skipping write for spec NNN`
+### `WARNING: backward-drift for spec NNN — Linear is ahead of this worktree`
 
-You invoked reconcile from a worktree NOT on `NNN-feature`'s branch (typically `main`). Per FR-025 the bridge will not regress Linear from a stale worktree; current Linear state still surfaces to the operator (FR-026). Switch to the spec's feature branch and re-run if you actually want to write.
+You invoked reconcile from a worktree whose disk state for `NNN` looks *older* than Linear's current state — Linear's lifecycle phase is further along than the phase inferred from disk, and/or Linear's `updatedAt` is newer than your spec dir's last commit (beyond a clock-skew tolerance). Per Constitution Principle IV (drift-aware, superseding the old branch-gate) the bridge does NOT block: interactively it prompts proceed (overwrite Linear from disk) or abort (skip, leave Linear unchanged); non-interactively it proceeds-and-warns unless you pass `--on-drift=abort`. Aborting leaves Linear untouched; if another worktree has progressed this spec, switch to it before writing. (Implemented by spec `003-drift-aware-authority`.)
 
 ### `WARNING: speckit-spec:NNN label resolved 2 Issues — keeping most-recent`
 
