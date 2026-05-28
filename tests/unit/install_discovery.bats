@@ -991,3 +991,105 @@ _graphql_call_count() {
     install::detect_vendored_git "$source_dir" 2>/dev/null
     [ "$(summary::count warned)" = "1" ]
 }
+
+# ---------------------------------------------------------------------------
+# FR-033 worktree-safe git hooks path.
+#
+# Regression coverage for the v0.1.1 dogfood bug: install.sh hardcoded the
+# local-hook target as `.git/hooks`, which is WRONG in a linked git worktree
+# where `.git` is a FILE and hooks live in the common dir (resolved via
+# `git rev-parse --git-path hooks`, honouring core.hooksPath). These tests
+# build a real temp repo, add a worktree, and assert the resolved target —
+# they are hermetic (no network, only local git) so we gate on git presence.
+# ---------------------------------------------------------------------------
+
+# _make_worktree_consumer
+#
+# Create a temp git repo with one commit, add a linked worktree, and seed
+# the worktree with the `.specify/` layout install::check_repo_layout needs.
+# Echoes the worktree path. Leaves cwd unchanged.
+_make_worktree_consumer() {
+    local base="${BATS_TEST_TMPDIR}/wt-repo"
+    local wt="${BATS_TEST_TMPDIR}/wt-linked"
+    git init -q "$base"
+    git -C "$base" config user.email "test@example.com"
+    git -C "$base" config user.name "Test"
+    git -C "$base" commit -q --allow-empty -m "root"
+    git -C "$base" worktree add -q -b feat/wt "$wt" >/dev/null 2>&1
+    mkdir -p "${wt}/.specify/extensions/linear"
+    printf '%s\n' "$wt"
+}
+
+@test "FR-033: install::check_repo_layout resolves hooks dir via rev-parse in a worktree (not literal .git/hooks)" {
+    command -v git >/dev/null 2>&1 || skip "git not available"
+    _source_install_sh
+    summary::start "fr-033 worktree test"
+
+    local wt
+    wt="$(_make_worktree_consumer)"
+    cd "$wt"
+
+    # In a linked worktree `.git` is a FILE, never a hooks directory.
+    [ -f "${wt}/.git" ]
+    [ ! -d "${wt}/.git/hooks" ]
+
+    install::check_repo_layout >/dev/null 2>&1 || true
+
+    # The canonical worktree-safe answer.
+    local expected
+    expected="$(git rev-parse --git-path hooks)"
+    [ -n "$expected" ]
+    # Resolution must NOT be the literal worktree-relative `.git/hooks`.
+    [ "$INSTALL_GIT_HOOKS_DIR" != ".git/hooks" ]
+    [ "$INSTALL_GIT_HOOKS_DIR" = "$expected" ]
+    # And the resolved dir must now exist (mkdir -p ran).
+    [ -d "$INSTALL_GIT_HOOKS_DIR" ]
+}
+
+@test "FR-033: install::install_git_hooks lands hooks in the rev-parse-resolved dir inside a worktree" {
+    command -v git >/dev/null 2>&1 || skip "git not available"
+    _source_install_sh
+    summary::start "fr-033 worktree test"
+
+    local wt
+    wt="$(_make_worktree_consumer)"
+    cd "$wt"
+
+    install::check_repo_layout >/dev/null 2>&1 || true
+    local hooks_dir
+    hooks_dir="$(git rev-parse --git-path hooks)"
+
+    install::install_git_hooks >/dev/null 2>&1 || true
+
+    # At least one shipped template must have landed in the resolved dir.
+    local landed=0 name
+    for name in post-checkout post-commit post-merge; do
+        if [ -f "${hooks_dir}/${name}" ]; then
+            landed=1
+        fi
+        # Nothing should have been written to the bogus worktree .git/hooks.
+        [ ! -f "${wt}/.git/hooks/${name}" ]
+    done
+    [ "$landed" -eq 1 ]
+}
+
+@test "FR-033: install::check_repo_layout honours core.hooksPath" {
+    command -v git >/dev/null 2>&1 || skip "git not available"
+    _source_install_sh
+    summary::start "fr-033 hookspath test"
+
+    local base="${BATS_TEST_TMPDIR}/hp-repo"
+    git init -q "$base"
+    git -C "$base" config user.email "test@example.com"
+    git -C "$base" config user.name "Test"
+    git -C "$base" config core.hooksPath ".husky"
+    mkdir -p "${base}/.specify/extensions/linear"
+    cd "$base"
+
+    install::check_repo_layout >/dev/null 2>&1 || true
+
+    local expected
+    expected="$(git rev-parse --git-path hooks)"
+    [ "$INSTALL_GIT_HOOKS_DIR" = "$expected" ]
+    [[ "$INSTALL_GIT_HOOKS_DIR" == *".husky"* ]]
+}
