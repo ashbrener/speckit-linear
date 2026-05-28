@@ -50,25 +50,25 @@ graph TD
 
 ## Install
 
-Until this extension lands in the spec-kit community catalog, install from the GitHub repo directly:
+Until this extension lands in the spec-kit community catalog, install from the GitHub archive URL (the CLI's `--from` flag expects a direct ZIP, not a repo URL):
 
 ```bash
-specify extension add linear --from https://github.com/ashbrener/spec-kit-linear
+specify extension add linear --from https://github.com/ashbrener/spec-kit-linear/archive/refs/heads/main.zip
 ```
 
-Once it's in the catalog, the shorter form will work:
+Or install from a local checkout (symlinks rather than copies, so your local edits flow through):
+
+```bash
+specify extension add /path/to/spec-kit-linear --dev
+```
+
+Once the extension is listed in the catalog, the shorter form will work:
 
 ```bash
 specify extension add linear
 ```
 
 Either path registers the `after_*` hooks into your project's `.specify/extensions.yml`, drops local git hooks into `.git/hooks/`, and scaffolds `.specify/extensions/linear/linear-config.yml`.
-
-For local development (e.g. testing a branch before merge):
-
-```bash
-specify extension add /path/to/spec-kit-linear --dev
-```
 
 ## Adopt — the 3 steps every project takes
 
