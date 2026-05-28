@@ -217,12 +217,33 @@ jobs:
           npx --yes markdownlint-cli2 "${globs[@]}"
 
   # ---------------------------------------------------------------------------
-  # Job 4: bats test matrix across bash 4 and bash 5
+  # Job 4: bats test matrix across {ubuntu, macOS} × {bash 4.4, bash 5.2}
   # ---------------------------------------------------------------------------
   # Runs the bats unit suite (and optionally the integration suite) against
-  # both Bash 4.4 and Bash 5.2 so we catch portability regressions early.
-  # ubuntu-latest ships Bash 5 by default; Bash 4 is installed from source-
-  # built tarballs cached via actions/cache.
+  # Bash 4.4 and Bash 5.2 on BOTH Linux and macOS runners. The dual-OS axis
+  # exists to catch BSD-vs-GNU userland regressions automatically — we've hit
+  # two BSD-awk multiline bugs that only surfaced at dogfood time (commits
+  # 1e32f29 and 2979d96). With macOS in the matrix, CI catches them first.
+  #
+  # Why source-build bash on BOTH platforms:
+  #   * ubuntu-latest ships bash 5.x; apt has no historical bash 4.4 package.
+  #   * macos-latest ships bash 3.2 (last GPLv2 release Apple will redistribute).
+  #     Homebrew exposes a single `bash` formula tracking upstream stable
+  #     (currently 5.3.x) — there is no `bash@4` or `bash@5.2` formula. So the
+  #     ONLY way to pin both versions on macOS is a source build from
+  #     ftp.gnu.org. We use the same source build on Linux for consistency.
+  #   * GNU bash 4.4 + 5.2 tarballs compile cleanly on both glibc and macOS
+  #     libSystem with the default `./configure` flags; no special toolchain.
+  #
+  # Caching: the compiled bash binary is cached per (os, bash_version) so the
+  # ~30-60s build only runs on cache miss. Cache key includes the OS to keep
+  # macOS and Linux artifacts separate (different ABIs).
+  #
+  # bats-core install:
+  #   * Linux: tarball install to ~/.local/bats, cached. (No apt package on the
+  #     ubuntu-latest image at a pinned version.)
+  #   * macOS: same tarball flow as Linux for parity. `brew install bats-core`
+  #     also works but pulls in unrelated cellar churn; the tarball is faster.
   #
   # Integration tests are gated on RUN_INTEGRATION_TESTS=1 because they need
   # a real Linear API token, which this repo's CI deliberately does not have
@@ -230,16 +251,17 @@ jobs:
   # PRs would also lack the secret, so gating on env keeps those green.
   # ---------------------------------------------------------------------------
   bats:
-    name: bats (bash ${{ matrix.bash_version }})
-    runs-on: ubuntu-latest
+    name: bats (${{ matrix.os }}, bash ${{ matrix.bash_version }})
+    runs-on: ${{ matrix.os }}
     strategy:
-      # Don't cancel the whole matrix if one bash version fails — we want to
-      # see both results so we can tell whether a failure is portability-
-      # specific or universal.
+      # Don't cancel the whole matrix if one combo fails — we want to see all
+      # results so we can tell whether a failure is OS-specific, bash-version-
+      # specific, or universal.
       fail-fast: false
       matrix:
         # Bash 4.4 = lowest version we promise to support (FR: "bash 4+").
         # Bash 5.2 = current upstream stable; ships in ubuntu-latest.
+        os: [ubuntu-latest, macos-latest]
         bash_version: ["4.4", "5.2"]
     env:
       # Integration tests stay off by default. To enable on a specific branch
@@ -250,17 +272,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ----- Install bats-core (cached) --------------------------------------
+      # ----- Install build prerequisites (macOS only) ------------------------
+      # ubuntu-latest already has build-essential available via apt; macOS
+      # needs Xcode CLT (present on macos-latest by default) plus `jq` for
+      # the bridge runtime tests. `gh` and `git` ship on the runner image.
+      - name: Install runtime deps (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          set -euo pipefail
+          # jq is preinstalled on macos-latest but pin via brew for safety —
+          # idempotent if already current.
+          brew list jq >/dev/null 2>&1 || brew install jq
+          jq --version
+
+      # ----- Install bats-core (cached, both OSes) ---------------------------
       # bats-core is a small set of bash scripts, so a tarball install + cache
       # is faster than a package install and avoids version drift between
-      # ubuntu-latest images.
+      # runner images.
       - name: Cache bats-core
         id: cache-bats
         uses: actions/cache@v4
         with:
           path: ~/.local/bats
-          # Bump this key when bumping the pinned version below.
-          key: bats-core-1.11.0
+          # Bump this key when bumping the pinned version below. Cache is
+          # OS-keyed because the install.sh writes absolute paths in shebangs.
+          key: bats-core-1.11.0-${{ matrix.os }}
 
       - name: Install bats-core 1.11.0
         if: steps.cache-bats.outputs.cache-hit != 'true'
@@ -275,47 +311,53 @@ jobs:
       - name: Add bats to PATH
         run: echo "$HOME/.local/bats/bin" >> "$GITHUB_PATH"
 
-      # ----- Provide the requested bash version ------------------------------
-      # For 5.2 we use the system bash that ships with ubuntu-latest (currently
-      # 5.2.x). For 4.4 we build from source — the apt archive does not carry
-      # historical bash versions, and building 4.4 takes ~30s on a hosted
-      # runner. We cache the resulting binary so subsequent runs reuse it.
-      - name: Use system bash (5.x)
-        if: matrix.bash_version == '5.2'
-        run: |
-          set -euo pipefail
-          bash --version
-          echo "BATS_BASH=$(command -v bash)" >> "$GITHUB_ENV"
-
-      - name: Cache bash 4.4 build
-        if: matrix.bash_version == '4.4'
-        id: cache-bash44
+      # ----- Build the requested bash version from source --------------------
+      # Source-build on BOTH OSes for version-exact testing. See header comment
+      # for why Homebrew can't help with pinned 4.4 / 5.2 on macOS.
+      - name: Cache bash ${{ matrix.bash_version }} build
+        id: cache-bash
         uses: actions/cache@v4
         with:
-          path: ~/.local/bash-4.4
-          key: bash-4.4-ubuntu-latest-v1
+          path: ~/.local/bash-${{ matrix.bash_version }}
+          # Cache key includes OS — ELF and Mach-O binaries are not portable.
+          # Bump the trailing -vN when changing build flags or source URL.
+          key: bash-${{ matrix.bash_version }}-${{ matrix.os }}-v1
 
-      - name: Build bash 4.4 from source
-        if: matrix.bash_version == '4.4' && steps.cache-bash44.outputs.cache-hit != 'true'
+      - name: Install build toolchain (Linux)
+        if: matrix.os == 'ubuntu-latest' && steps.cache-bash.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends build-essential
-          curl -fsSL https://ftp.gnu.org/gnu/bash/bash-4.4.tar.gz -o /tmp/bash-4.4.tar.gz
-          tar -xzf /tmp/bash-4.4.tar.gz -C /tmp
-          pushd /tmp/bash-4.4 >/dev/null
-          ./configure --prefix="$HOME/.local/bash-4.4" --quiet
-          make -j"$(nproc)" >/dev/null
-          make install >/dev/null
-          popd >/dev/null
-          "$HOME/.local/bash-4.4/bin/bash" --version
 
-      - name: Expose bash 4.4 to subsequent steps
-        if: matrix.bash_version == '4.4'
+      - name: Build bash ${{ matrix.bash_version }} from source
+        if: steps.cache-bash.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          echo "BATS_BASH=$HOME/.local/bash-4.4/bin/bash" >> "$GITHUB_ENV"
-          "$HOME/.local/bash-4.4/bin/bash" --version
+          ver="${{ matrix.bash_version }}"
+          curl -fsSL "https://ftp.gnu.org/gnu/bash/bash-${ver}.tar.gz" \
+            -o "/tmp/bash-${ver}.tar.gz"
+          tar -xzf "/tmp/bash-${ver}.tar.gz" -C /tmp
+          pushd "/tmp/bash-${ver}" >/dev/null
+          # Detect parallel-build job count cross-platform: nproc on Linux,
+          # `sysctl -n hw.ncpu` on macOS.
+          if command -v nproc >/dev/null 2>&1; then
+            jobs="$(nproc)"
+          else
+            jobs="$(sysctl -n hw.ncpu)"
+          fi
+          ./configure --prefix="$HOME/.local/bash-${ver}" --quiet
+          make -j"$jobs" >/dev/null
+          make install >/dev/null
+          popd >/dev/null
+          "$HOME/.local/bash-${ver}/bin/bash" --version
+
+      - name: Expose bash ${{ matrix.bash_version }} to subsequent steps
+        run: |
+          set -euo pipefail
+          ver="${{ matrix.bash_version }}"
+          echo "BATS_BASH=$HOME/.local/bash-${ver}/bin/bash" >> "$GITHUB_ENV"
+          "$HOME/.local/bash-${ver}/bin/bash" --version
 
       # ----- Run the test suites --------------------------------------------
       - name: Run bats unit tests
