@@ -321,14 +321,16 @@ _graphql_call_count() {
     [ "$output" = "function" ]
 }
 
-@test "T209 stub: install::quick_validate_binding stores both UUIDs on session" {
-    _source_install_sh
-    install::quick_validate_binding \
-        "6ab43461-6d22-4f02-bb1e-0be9859c7997" \
-        "97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080"
-    [ "$INSTALL_SESSION_SELECTED_TEAM_ID" = "6ab43461-6d22-4f02-bb1e-0be9859c7997" ]
-    [ "$INSTALL_SESSION_SELECTED_PROJECT_ID" = "97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080" ]
-}
+# NOTE: the Phase 2 stub test "stores both UUIDs on session" was removed
+# when Phase 4 (T248) replaced the stub with a full GraphQL-driven
+# validator. The stub stored its two args verbatim; the real helper now
+# issues a `quick-validate` query and only populates the session block
+# on a successful round trip. Calling it with bare UUIDs and no mocked
+# graphql::query no longer stores anything (the validation query fails
+# first). The real behaviour — UUIDs stored on a successful validate,
+# plus the three failure modes (team-null, project-null, mismatch) — is
+# covered by T245 in tests/unit/install_backwards_compat.bats with a
+# properly mocked graphql::query. See Assumption A16 in tasks.md.
 
 @test "T210: install::usage documents the interactive default flow" {
     _source_install_sh

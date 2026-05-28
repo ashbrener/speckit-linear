@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing landed yet for v0.1.1. Add entries here as they merge._
+### Added — Install ergonomics redesign (spec 002, v0.1.1)
+
+- **Viewer-driven install discovery flow (FR-037..FR-043)** — the API key is now the only thing the operator brings. `/speckit.linear.install` resolves the key from `.env` (or env var, or interactive prompt), verifies via Linear's `viewer` query, then presents:
+  - A numbered team picker (auto-picked silently when the workspace has one team); operator never sees a UUID.
+  - A numbered project picker with a final "Create new project" option; if chosen, install issues `projectCreate` with the project name (defaults to repo dir) and surfaces the new project's Linear URL in the summary.
+- **Backwards-compat preserved (FR-044, FR-045)** — `bash src/install.sh --team <UUID> --project <UUID>` still works bit-for-bit for CI / scripted installs. `--non-interactive` strictness tightened: now halts with a clear error rather than falling through to interactive prompts when flags are missing.
+- **Self-install safety guard (FR-046)** — `install.sh` detects the `source == target` case (operator runs `specify extension add /path/to/spec-kit-linear --dev` from inside `/path/to/spec-kit-linear` itself) and exits with exit code 2 + a clear remediation message. Prevents the recursive `.specify/extensions/linear/.specify/extensions/linear/...` directory mess that hit macOS filename length limits during the first community-style dogfood.
+- **Vendored `.git/` detection (FR-049)** — `install.sh` detects a vendored `.git/` directory at `.specify/extensions/linear/.git/` (caused by the spec-kit CLI's `--dev` install vendoring the source's full git tree) and surfaces a warning row in the dependency-verification report. Operator-actionable workaround documented in the install summary; no auto-delete (operator's filesystem).
+- **README install commands corrected (FR-047)** — `--from` flag now requires the GitHub archive ZIP URL (`/archive/refs/heads/main.zip`), not the repo URL; bare repo URLs error with `BadZipFile`. The catalog form `specify extension add linear` documented as "once it's listed". `--dev <path>` documented as the local-development install. Operator-facing instructions now work on the first command they run.
+
+### Fixed — Retroactive sync (commit ab7111b, PR #3)
+
+- **`--retroactive` actually bypasses FR-025's write-authority gate (HURRI dogfood bug)** — v0.1.0 only suppressed the per-spec "non-authoritative worktree" warning row; the underlying gate in `sync_spec_issue` still fired and returned 0 without writing. Result: an operator with 11 existing specs ran `bash src/reconcile.sh --all --retroactive` from a non-`NNN-feature` branch and got ZERO mutations — breaking FR-014's promise that "first reconcile after install backfills every spec". This fix makes the gate genuinely bypass-able when `--retroactive` is set; aggregated INFO row recorded once after the per-spec loop. Two new integration tests in `tests/integration/us5-retroactive-bypass-authority.bats` regression-pin both the bypass and the FR-025-default behavior.
+
+### Changed
+
+- **`specs/001-spec-kit-linear-bridge/spec.md` FR-014** — added a clarifying note that `--retroactive` is the operator-facing flag delivering FR-014's contract; without it, FR-025 gates per-branch.
+- **`commands/linear-push.md` `--retroactive` description** — now clearly states "bypasses FR-025 write-authority gate; intended for first-time adoption only".
+
+### Acknowledgements
+
+The install-ergonomics redesign and the FR-025-bypass fix were both surfaced by the first real-operator dogfood of v0.1.0 into `~/Code/HURRI_AI/backend`. Real users surface real bugs; ship more.
+
+[v0.1.1 entry above is a working draft and will be finalized when spec 002 phases 4-6 land.]
 
 ## [0.1.0] — 2026-05-28
 
