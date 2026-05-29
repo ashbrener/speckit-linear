@@ -94,7 +94,7 @@ No new on-disk state, no sidecar files, no `~/.config/`.
   on `RUN_INTEGRATION_TESTS=1` + `LINEAR_API_KEY` present per
   v0.1.0 pattern) — exercise the full flow against a real Linear
   workspace: prompts → viewer → teams → projects → projectCreate →
-  config write. Uses the existing `OSH-INFRA` test workspace. The
+  config write. Uses the existing `ACME` test workspace. The
   same suite exercises SC-012's README-walkthrough scenarios: the
   `--from <archive-zip-URL>` form succeeds, and the `--dev` form
   from a path other than the bridge's own source installs cleanly
@@ -354,7 +354,7 @@ tests/
 │   ├── install_discovery.bats       # NEW — picker + EOF + retry tests with stubbed graphql::
 │   └── (existing v0.1.0 *.bats)     # unchanged
 ├── integration/
-│   ├── install_e2e_discovery.bats   # NEW — full interactive flow vs real OSH-INFRA
+│   ├── install_e2e_discovery.bats   # NEW — full interactive flow vs real ACME
 │   ├── install_e2e_backwards_compat.bats # NEW — SC-011 regression for --team --project --non-interactive
 │   └── (existing v0.1.0 *.bats)     # unchanged
 └── fixtures/

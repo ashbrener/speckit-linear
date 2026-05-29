@@ -4,7 +4,7 @@
 # scripts/dogfood.sh — End-to-end dogfood driver for spec-kit-linear (T077).
 #
 # Chains src/install.sh -> src/seed.sh -> src/reconcile.sh --spec 001 against
-# the operator's OSH-INFRA Linear workspace (or any team UUID passed via
+# the operator's ACME Linear workspace (or any team UUID passed via
 # --team) and captures every stdout/stderr stream plus structured metadata
 # (timings, exit codes, Linear verification) into a Markdown report at
 # validation/dogfood-001.md.
@@ -17,7 +17,7 @@
 #   - specs/001-spec-kit-linear-bridge/spec.md User Story 4 + User Story 5,
 #     FR-018b (preflight), FR-021 (seed idempotency), FR-022 (halt-on-unseeded)
 #   - specs/001-spec-kit-linear-bridge/quickstart.md Steps 1-5
-#   - validation/linear-workspace-probe.md (default OSH team UUID)
+#   - validation/linear-workspace-probe.md (default ACM team UUID)
 #
 # Exit codes:
 #   0  Success — install + seed + reconcile + verification all green.
@@ -35,9 +35,9 @@ set -euo pipefail
 # Constants & defaults
 # -----------------------------------------------------------------------------
 
-# Default team UUID — OSH-INFRA per validation/linear-workspace-probe.md.
-# Override with --team for other workspaces. Team key 'OSH', urlKey 'osh-infra'.
-readonly DEFAULT_TEAM_UUID="6ab43461-6d22-4f02-bb1e-0be9859c7997"
+# Default team UUID — ACME per validation/linear-workspace-probe.md.
+# Override with --team for other workspaces. Team key 'ACM', urlKey 'acme'.
+readonly DEFAULT_TEAM_UUID="11111111-1111-4111-8111-111111111111"
 readonly DEFAULT_REPORT_PATH="validation/dogfood-001.md"
 readonly LINEAR_GRAPHQL_ENDPOINT="https://api.linear.app/graphql"
 
@@ -115,8 +115,8 @@ ceremony, the workspace seed, and a reconcile of spec 001, and captures
 the full transcript plus a Linear verification pass to a Markdown report.
 
 OPTIONS
-  --team UUID       Linear Team UUID to target. Default: OSH-INFRA
-                    (6ab43461-6d22-4f02-bb1e-0be9859c7997 per
+  --team UUID       Linear Team UUID to target. Default: ACME
+                    (11111111-1111-4111-8111-111111111111 per
                     validation/linear-workspace-probe.md).
   --dry-run         Propagate --dry-run to src/seed.sh and src/reconcile.sh
                     so no Linear mutations fire. NOTE: src/install.sh does
@@ -486,7 +486,7 @@ write_header() {
 
 **Run**: ${timestamp}
 **Operator**: ${operator_name} <${operator_email}>
-**Workspace**: OSH-INFRA
+**Workspace**: ACME
 **Team UUID**: ${TEAM_UUID}
 **Repo**: ashbrener/spec-kit-linear
 **Branch**: ${branch}
@@ -507,11 +507,11 @@ EOF
     fi
 
     cat > "$REPORT_ABS_PATH" <<EOF
-# Dogfood report: spec-kit-linear -> OSH-INFRA (T077)
+# Dogfood report: spec-kit-linear -> ACME (T077)
 
 **Run**: ${timestamp}
 **Operator**: ${operator_name} <${operator_email}>
-**Workspace**: OSH-INFRA
+**Workspace**: ACME
 **Team UUID**: ${TEAM_UUID}
 **Repo**: ashbrener/spec-kit-linear
 **Branch**: ${branch}
@@ -521,7 +521,7 @@ EOF
 ## Overview
 
 This report captures the first end-to-end dogfood of the bridge:
-installing it into its own repo, seeding the OSH-INFRA workspace
+installing it into its own repo, seeding the ACME workspace
 with the 9 lifecycle workflow states + labels, and reconciling
 spec 001 to the resulting Linear Project. Findings are appended to
 each section by \`scripts/dogfood.sh\` on each invocation.
@@ -775,7 +775,7 @@ run_reconcile() {
 
 # -----------------------------------------------------------------------------
 # run_linear_verification
-#   Step 4 — query Linear to confirm the spec-kit-linear Project + OSH-1
+#   Step 4 — query Linear to confirm the spec-kit-linear Project + ACM-1
 #   Issue exist with the expected labels and workflow state.
 # -----------------------------------------------------------------------------
 run_linear_verification() {
@@ -899,7 +899,7 @@ run_linear_verification() {
 
     if [[ "$LINEAR_PROJECT_OK" != "ok" || "$LINEAR_ISSUE_OK" != "ok" ]]; then
         write_failure_section "Step 4 (Linear verification)" "4" \
-            "The reconcile reported success but Linear does not show the expected Project or Issue. Check the workspace via https://linear.app/osh-infra and confirm the team UUID matches OSH-INFRA."
+            "The reconcile reported success but Linear does not show the expected Project or Issue. Check the workspace via https://linear.app/acme and confirm the team UUID matches ACME."
         log "linear verification failed"
         exit 4
     fi
@@ -1127,7 +1127,7 @@ run_interactive_flow() {
 
     # Compose the install flags. --dev installs from the bridge checkout;
     # --no-action removes the T064 prompt from the stdin sequence. --team is
-    # passed so the dogfood targets the known OSH-INFRA team deterministically
+    # passed so the dogfood targets the known ACME team deterministically
     # while STILL exercising the project picker / create-new path. When
     # --interactive-project is set, --project short-circuits S4 (FR-044).
     local -a install_flags

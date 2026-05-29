@@ -371,7 +371,7 @@ EOF
   [[ "$output" != \[* ]]
 }
 
-# Regression test for the v0.1.1 dogfood bug (OSH-5 stuck "Implementing"
+# Regression test for the v0.1.1 dogfood bug (ACM-5 stuck "Implementing"
 # despite PR #1 merged): reconciling a spec's feature branch from `main`
 # — where the feature branch has NO local ref — must still detect MERGED
 # via `gh pr list --head`. Previously the gh query requested an invalid

@@ -24,7 +24,7 @@ All Linear entity field definitions are taken from
 input shapes), `validation/linear-mcp-runtime-probe.md` (live
 `tools/list` output dated 2026-05-28), and
 `validation/linear-workspace-probe.md` (concrete shapes observed in
-the live `OSH-INFRA` workspace). The runtime probe resolved every
+the live `ACME` workspace). The runtime probe resolved every
 previously-outstanding field shape; any remaining open question is
 flagged inline as `confirm during T077 dogfood`.
 
@@ -239,8 +239,8 @@ passes a `workspaceId` (it is implicit in the token).
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | UUID | org-level UUID; e.g. `c4e7538f-…` in OSH-INFRA |
-| `name` | string | e.g. `OSH-INFRA` |
+| `id` | UUID | org-level UUID; e.g. `c4e7538f-…` in ACME |
+| `name` | string | e.g. `ACME` |
 | `urlKey` | string | slug used in `https://linear.app/<urlKey>/…` URLs |
 
 Relationship: **owns N Teams**, **owns N Projects** (Projects are
@@ -255,8 +255,8 @@ Projects.
 | Field | Type | Notes |
 |---|---|---|
 | `id` | UUID | stored in `linear.team.id` |
-| `key` | string | issue-identifier prefix, e.g. `OSH` (Issues become `OSH-123`) |
-| `name` | string | e.g. `OSH-INFRA` |
+| `key` | string | issue-identifier prefix, e.g. `ACM` (Issues become `ACM-123`) |
+| `name` | string | e.g. `ACME` |
 | `members[]` | User[] | not consulted by bridge |
 
 Relationship: workspace owns team; team owns WorkflowStates (team-scoped
@@ -300,7 +300,7 @@ One Linear Issue per spec. The central entity the bridge manipulates.
 | Field | Type | Source | Notes |
 |---|---|---|---|
 | `id` | UUID | Linear | resolved on first sync via label lookup (FR-004b) |
-| `identifier` | string | Linear | `OSH-NNN` form, display only |
+| `identifier` | string | Linear | `ACM-NNN` form, display only |
 | `title` | string | bridge | encodes feature number + short name: `NNN-<short-name>` (FR-003) |
 | `description` | string (markdown) | bridge | fully bridge-owned body — overview ++ memory ++ diagrams in canonical order (FR-004, FR-016); see schema below |
 | `teamId` | UUID | bridge | = `linear.team.id` |
@@ -413,7 +413,7 @@ all parent-grouped per the workspace probe.
 **Scope clarification**: per `linear-workspace-probe.md` §Labels and
 `linear-mcp-tool-signatures.md` §Capability 6, `IssueLabel.parent` is
 singular (one nesting level only). Workspace-scoped vs team-scoped:
-the probe observed team-scoped labels in `OSH-INFRA`. Bridge uses
+the probe observed team-scoped labels in `ACME`. Bridge uses
 team scoping uniformly.
 
 ### 3.7 WorkflowState
@@ -682,4 +682,4 @@ but do not halt sync.
 - `validation/linear-mcp-tool-signatures.md` — Linear GraphQL input
   schemas referenced throughout § 3.
 - `validation/linear-workspace-probe.md` — concrete entity shapes
-  from the live `OSH-INFRA` workspace.
+  from the live `ACME` workspace.

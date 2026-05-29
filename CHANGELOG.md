@@ -60,7 +60,7 @@ Install ergonomics redesign (spec 002) plus three dogfood-surfaced reconcile hot
 ### Validation
 
 - **Constitution v1.0.0 re-check (T270)** — 8 Conform / 0 Drift; the Principle VI expansion (API key load-bearing at install) re-checks clean. See `validation/constitution-recheck-002.md`.
-- **Dogfooded live** — spec 002 itself mirrored to the OSH-INFRA Linear workspace (parent Issue + 6 task-phase sub-issues) during development.
+- **Dogfooded live** — spec 002 itself mirrored to the ACME Linear workspace (parent Issue + 6 task-phase sub-issues) during development.
 
 ### Acknowledgements
 

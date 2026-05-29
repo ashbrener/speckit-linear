@@ -83,7 +83,7 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     stage_pull_response '[
       {
         "id":"'"${SPEC_UUID_5}"'",
-        "identifier":"OSH-5",
+        "identifier":"ACM-5",
         "title":"001-spec-kit-linear-bridge",
         "updatedAt":"2026-05-25T16:00:00.000Z",
         "description":"<!-- spec-kit-linear:memory:begin -->\n| **Branch** | `001-spec-kit-linear-bridge` |\n<!-- spec-kit-linear:memory:end -->",
@@ -91,12 +91,12 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0009-4ccc-cccc-cccccccccccc","name":"Done","type":"completed"},
         "labels":{"nodes":[{"name":"speckit-spec:001"},{"name":"phase:merged"}]},
         "project":{"id":"bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb","name":"spec-kit-linear"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       },
       {
         "id":"'"${SPEC_UUID_12}"'",
-        "identifier":"OSH-12",
+        "identifier":"ACM-12",
         "title":"002-multi-phase",
         "updatedAt":"2026-05-27T09:21:00.000Z",
         "description":"",
@@ -104,8 +104,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0004-4ccc-cccc-cccccccccccc","name":"Tasking","type":"started"},
         "labels":{"nodes":[{"name":"speckit-spec:002"},{"name":"phase:tasking"}]},
         "project":{"id":"bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb","name":"spec-kit-linear"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       }
     ]'
     integration::stage_response 'query' \
@@ -122,8 +122,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     [[ -z "$mutation_lines" || "$mutation_lines" == "0" ]]
 
     # ---- output surfaces both identifiers ----
-    [[ "$output" == *"OSH-5"* ]]
-    [[ "$output" == *"OSH-12"* ]]
+    [[ "$output" == *"ACM-5"* ]]
+    [[ "$output" == *"ACM-12"* ]]
     # ---- summary block fired ----
     [[ "$output" == *"speckit.linear summary"* ]]
 }
@@ -142,7 +142,7 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     stage_pull_response '[
       {
         "id":"'"${SPEC_UUID_12}"'",
-        "identifier":"OSH-12",
+        "identifier":"ACM-12",
         "title":"002-multi-phase",
         "updatedAt":"2026-05-27T09:21:00.000Z",
         "description":"",
@@ -150,12 +150,12 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0004-4ccc-cccc-cccccccccccc","name":"Tasking","type":"started"},
         "labels":{"nodes":[{"name":"speckit-spec:002"},{"name":"phase:tasking"}]},
         "project":{"id":"bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb","name":"spec-kit-linear"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       },
       {
         "id":"'"${SPEC_UUID_13}"'",
-        "identifier":"OSH-22",
+        "identifier":"ACM-22",
         "title":"003-feature-x",
         "updatedAt":"2026-05-28T08:00:00.000Z",
         "description":"",
@@ -163,8 +163,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0003-4ccc-cccc-cccccccccccc","name":"Planning","type":"unstarted"},
         "labels":{"nodes":[{"name":"speckit-spec:003"},{"name":"phase:planning"}]},
         "project":{"id":"bbbbbbbb-2222-4bbb-bbbb-bbbbbbbbbbbb","name":"another-repo"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       }
     ]'
     integration::stage_response 'query' \
@@ -184,8 +184,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     [[ "$output" == *"spec-kit-linear"* ]]
     [[ "$output" == *"another-repo"* ]]
     # ---- both identifiers surface ----
-    [[ "$output" == *"OSH-12"* ]]
-    [[ "$output" == *"OSH-22"* ]]
+    [[ "$output" == *"ACM-12"* ]]
+    [[ "$output" == *"ACM-22"* ]]
 }
 
 # =============================================================================
@@ -203,7 +203,7 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     stage_pull_response '[
       {
         "id":"'"${SPEC_UUID_13}"'",
-        "identifier":"OSH-13",
+        "identifier":"ACM-13",
         "title":"005-implementing-feature",
         "updatedAt":"2026-05-28T11:50:00.000Z",
         "description":"",
@@ -211,8 +211,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0006-4ccc-cccc-cccccccccccc","name":"Implementing","type":"started"},
         "labels":{"nodes":[{"name":"speckit-spec:005"},{"name":"phase:implementing"}]},
         "project":{"id":"bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb","name":"spec-kit-linear"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       }
     ]'
     integration::stage_response 'query' \
@@ -233,8 +233,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     phase_matches="$(integration::calls_containing 'phase:implementing')"
     [[ "$phase_matches" -ge 1 ]]
 
-    # ---- output surfaces the OSH-13 identifier ----
-    [[ "$output" == *"OSH-13"* ]]
+    # ---- output surfaces the ACM-13 identifier ----
+    [[ "$output" == *"ACM-13"* ]]
 }
 
 # =============================================================================
@@ -249,7 +249,7 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     stage_pull_response '[
       {
         "id":"'"${SPEC_UUID_13}"'",
-        "identifier":"OSH-13",
+        "identifier":"ACM-13",
         "title":"005-implementing-feature",
         "updatedAt":"2026-05-28T11:50:00.000Z",
         "description":"",
@@ -257,8 +257,8 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
         "state":{"id":"cccccccc-0006-4ccc-cccc-cccccccccccc","name":"Implementing","type":"started"},
         "labels":{"nodes":[{"name":"speckit-spec:005"},{"name":"phase:implementing"}]},
         "project":{"id":"bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb","name":"spec-kit-linear"},
-        "assignee":{"id":"9f411c68-640a-4f80-a803-c8716caff3f0","name":"ash","displayName":"ash"},
-        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","organization":{"urlKey":"osh-infra"}}
+        "assignee":{"id":"33333333-3333-4333-8333-333333333333","name":"ash","displayName":"ash"},
+        "team":{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","organization":{"urlKey":"acme"}}
       }
     ]'
     integration::stage_response 'query' \
@@ -275,10 +275,10 @@ SPEC_UUID_13="ee000000-0000-4000-0000-000000000013"
     [[ -z "$mutation_lines" || "$mutation_lines" == "0" ]]
 
     # ---- every contract field surfaces in the stdout JSON ----
-    [[ "$output" == *'"identifier":"OSH-13"'* ]]
+    [[ "$output" == *'"identifier":"ACM-13"'* ]]
     [[ "$output" == *'"feature_number":"005"'* ]]
     [[ "$output" == *'"project_name":"spec-kit-linear"'* ]]
     [[ "$output" == *'"phase_label":"implementing"'* ]]
     [[ "$output" == *'"estimate":46'* ]]
-    [[ "$output" == *'"url":"https://linear.app/osh-infra/issue/OSH-13"'* ]]
+    [[ "$output" == *'"url":"https://linear.app/acme/issue/ACM-13"'* ]]
 }

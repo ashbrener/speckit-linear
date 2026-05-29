@@ -33,7 +33,7 @@ teardown() {
     if [[ -z "${LINEAR_API_KEY:-}" ]]; then
         skip "LINEAR_API_KEY missing — integration test requires a live key"
     fi
-    # T231 wires this against the OSH-INFRA workspace. The Phase 3 commit
+    # T231 wires this against the ACME workspace. The Phase 3 commit
     # lands the scaffold; the full piped-stdin operator-pick simulation
     # lands alongside the T269 dogfood-002 harness (Phase 6).
     skip "T231 live integration body lands with T269 dogfood-002 harness"

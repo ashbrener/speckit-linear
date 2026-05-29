@@ -113,7 +113,7 @@ Fires after `viewer` succeeds and `teams` query returns ≥2 nodes
 
 ```text
 [linear] Teams accessible to this API key:
-  1) OSH      — OSH
+  1) ACM      — ACM
   2) ENG      — Engineering
   3) DESIGN   — Design Studio
 Pick a team [1-3]:
@@ -148,7 +148,7 @@ and appends BEFORE the `Pick a team [1-20]:` prompt:
 When `teams.nodes.length == 1`, no prompt fires. Instead:
 
 ```text
-[linear] Found 1 team accessible — using OSH (OSH Infra) (auto-picked).
+[linear] Found 1 team accessible — using ACM (ACME Infra) (auto-picked).
          Override with --team <UUID> on next install.
 ```
 
@@ -189,7 +189,7 @@ Fires after team is selected (auto or interactive). Skipped when
 When `projects.nodes.length >= 1`:
 
 ```text
-[linear] Projects in OSH:
+[linear] Projects in ACM:
   1) spec-kit-linear
   2) acme-backend
   3) Create new project
@@ -199,7 +199,7 @@ Pick a project [1-3]:
 When `projects.nodes.length == 0`:
 
 ```text
-[linear] No existing projects in OSH.
+[linear] No existing projects in ACM.
   1) Create new project
 Pick a project [1-1]:
 ```
@@ -264,7 +264,7 @@ Before issuing `projectCreate`, the install queries
 If a match exists:
 
 ```text
-[linear] A project named "<name>" already exists in OSH.
+[linear] A project named "<name>" already exists in ACM.
          [create-anyway/pick-existing/rename] (default: pick-existing):
 ```
 
@@ -276,7 +276,7 @@ If a match exists:
 ### 5.4 Confirm prompt (verbatim)
 
 ```text
-[linear] Create new Linear Project "<name>" in OSH? [Y/n] (default: Y):
+[linear] Create new Linear Project "<name>" in ACM? [Y/n] (default: Y):
 ```
 
 - `Y` / `y` / empty (default) → fire `projectCreate` mutation.
@@ -345,7 +345,7 @@ two new spec-002-specific rows:
 |---|---|---|
 | `Key sourced from` | `InstallSession.api_key_source` | `Key sourced from: interactive_saved (written to .env)` |
 | `Vendored .git/ warning` | conditional on FR-049 detection | `Vendored .git/ present: rm -rf .specify/extensions/linear/.git/ before committing` |
-| `Open in Linear` | `InstallSession.selected_project_url` | `Open in Linear: https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3` |
+| `Open in Linear` | `InstallSession.selected_project_url` | `Open in Linear: https://linear.app/acme/project/spec-kit-linear-97bca3d5ede3` |
 
 All other summary rows are unchanged from v0.1.0.
 

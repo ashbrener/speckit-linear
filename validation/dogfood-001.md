@@ -1,9 +1,9 @@
-# Dogfood report: spec-kit-linear -> OSH-INFRA (T077)
+# Dogfood report: spec-kit-linear -> ACME (T077)
 
 **Run**: 2026-05-28T12:25:27Z
-**Operator**: ash@starlogik.com <ash@starlogik.com>
-**Workspace**: OSH-INFRA
-**Team UUID**: 6ab43461-6d22-4f02-bb1e-0be9859c7997
+**Operator**: operator@example.com <operator@example.com>
+**Workspace**: ACME
+**Team UUID**: 11111111-1111-4111-8111-111111111111
 **Repo**: ashbrener/spec-kit-linear
 **Branch**: 001-spec-kit-linear-bridge
 **Bridge commit**: ea7689d
@@ -12,7 +12,7 @@
 ## Overview
 
 This report captures the first end-to-end dogfood of the bridge:
-installing it into its own repo, seeding the OSH-INFRA workspace
+installing it into its own repo, seeding the ACME workspace
 with the 9 lifecycle workflow states + labels, and reconciling
 spec 001 to the resulting Linear Project. Findings are appended to
 each section by `scripts/dogfood.sh` on each invocation.
@@ -66,8 +66,8 @@ Skipped: 0   Warned: 0     Errors: 0
 
 | Check | Status | Detail |
 |---|---|---|
-| Project "spec-kit-linear" exists on team 6ab43461-6d22-4f02-bb1e-0be9859c7997 | PASS | https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3 |
-| Issue with label `speckit-spec:001` exists | PASS | OSH-5 |
+| Project "spec-kit-linear" exists on team 11111111-1111-4111-8111-111111111111 | PASS | https://linear.app/acme/project/spec-kit-linear-97bca3d5ede3 |
+| Issue with label `speckit-spec:001` exists | PASS | ACM-5 |
 | Issue title | PASS | 001-spec-kit-linear-bridge |
 | Issue workflow state | PASS | Implementing (started) |
 | Issue labels | PASS | agent:claude, phase:implementing, speckit-spec:001 |
@@ -82,7 +82,7 @@ Skipped: 0   Warned: 0     Errors: 0
 | Step 2 (seed) | exit 0 in 0s |
 | Step 3 (reconcile) | exit 0 in 28s |
 | Step 4 (Linear verify) | project=ok issue=ok |
-| Linear spec Issue | <https://linear.app/osh-infra/issue/OSH-5/001-spec-kit-linear-bridge> |
+| Linear spec Issue | <https://linear.app/acme/issue/ACM-5/001-spec-kit-linear-bridge> |
 
 ## Rough edges & follow-ups
 

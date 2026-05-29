@@ -76,7 +76,7 @@ Represented in bash as a parallel-array tuple
 | Field | Type | Source | Notes |
 |---|---|---|---|
 | `id` | UUID | Linear `Team.id` | Lookup key. Operator never sees this (SC-010). |
-| `key` | string | Linear `Team.key` | The visible team key (`HUR`, `ENG`, `OSH`). Displayed in picker. |
+| `key` | string | Linear `Team.key` | The visible team key (`ENG`, `OPS`, `ACM`). Displayed in picker. |
 | `name` | string | Linear `Team.name` | Display name. Displayed in picker (after the em-dash separator per FR-039). |
 
 **Invariants**:

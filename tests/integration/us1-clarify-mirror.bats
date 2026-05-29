@@ -70,10 +70,10 @@ setup() {
     # update the spec Issue's memory block on this run; that's fine,
     # it just isn't what this test cares about) ----
     integration::stage_response 'mutation-IssueUpdate' \
-        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"OSH-5\",\"title\":\"005-clarify-sessions\"}}}}"
+        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"ACM-5\",\"title\":\"005-clarify-sessions\"}}}}"
 
     integration::stage_response 'mutation-IssueCreate' \
-        "{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"OSH-5\",\"title\":\"005-clarify-sessions\"}}}}"
+        "{\"data\":{\"issueCreate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"ACM-5\",\"title\":\"005-clarify-sessions\"}}}}"
 
     # ---- save_comment / commentCreate mutations succeed with a
     # unique-ish UUID echo back. The reconciler doesn't actually need

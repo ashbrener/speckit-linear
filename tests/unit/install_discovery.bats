@@ -261,13 +261,13 @@ _graphql_call_count() {
 
 @test "T206 stub: install::pick_team_interactively auto-picks single team" {
     _source_install_sh
-    INSTALL_SESSION_TEAMS_IDS=("6ab43461-6d22-4f02-bb1e-0be9859c7997")
-    INSTALL_SESSION_TEAMS_KEYS=("OSH")
-    INSTALL_SESSION_TEAMS_NAMES=("OSH Infra")
+    INSTALL_SESSION_TEAMS_IDS=("11111111-1111-4111-8111-111111111111")
+    INSTALL_SESSION_TEAMS_KEYS=("ACM")
+    INSTALL_SESSION_TEAMS_NAMES=("ACME Infra")
     install::pick_team_interactively
-    [ "$INSTALL_SESSION_SELECTED_TEAM_ID" = "6ab43461-6d22-4f02-bb1e-0be9859c7997" ]
-    [ "$INSTALL_SESSION_SELECTED_TEAM_KEY" = "OSH" ]
-    [ "$INSTALL_SESSION_SELECTED_TEAM_NAME" = "OSH Infra" ]
+    [ "$INSTALL_SESSION_SELECTED_TEAM_ID" = "11111111-1111-4111-8111-111111111111" ]
+    [ "$INSTALL_SESSION_SELECTED_TEAM_KEY" = "ACM" ]
+    [ "$INSTALL_SESSION_SELECTED_TEAM_NAME" = "ACME Infra" ]
 }
 
 @test "T206 stub: install::pick_team_interactively halts on zero teams" {
@@ -348,7 +348,7 @@ _graphql_call_count() {
     INSTALL_FLAG_TEAM=""
     INSTALL_FLAG_PROJECT=""
     INSTALL_FLAG_HELP=0
-    run install::parse_args --team 6ab43461-6d22-4f02-bb1e-0be9859c7997 --auto-create
+    run install::parse_args --team 11111111-1111-4111-8111-111111111111 --auto-create
     [ "$status" -eq 0 ]
     [[ "$output" =~ "--auto-create is deprecated" ]]
 }
@@ -360,7 +360,7 @@ _graphql_call_count() {
     INSTALL_FLAG_TEAM=""
     INSTALL_FLAG_PROJECT=""
     INSTALL_FLAG_HELP=0
-    run install::parse_args --team 6ab43461-6d22-4f02-bb1e-0be9859c7997 --auto-create --non-interactive
+    run install::parse_args --team 11111111-1111-4111-8111-111111111111 --auto-create --non-interactive
     [ "$status" -eq 0 ]
     [[ ! "$output" =~ "--auto-create is deprecated" ]]
 }
@@ -612,8 +612,8 @@ _graphql_call_count() {
     install::resolve_operator
     [ "$(_graphql_call_count)" = "1" ]
     [ "$INSTALL_SESSION_VIEWER_ID" = "11111111-2222-3333-4444-555555555555" ]
-    [ "$INSTALL_SESSION_VIEWER_ORG_NAME" = "OSH Infra" ]
-    [ "$INSTALL_SESSION_VIEWER_ORG_URL_KEY" = "osh-infra" ]
+    [ "$INSTALL_SESSION_VIEWER_ORG_NAME" = "ACME Infra" ]
+    [ "$INSTALL_SESSION_VIEWER_ORG_URL_KEY" = "acme" ]
     [ "$INSTALL_OPERATOR_USER_ID" = "11111111-2222-3333-4444-555555555555" ]
 }
 
@@ -639,7 +639,7 @@ _graphql_call_count() {
     INSTALL_TEST_FIXTURE_PATH="${INSTALL_TEST_FIXTURE_DIR}/teams_single.json"
     install::discover_teams
     install::pick_team_interactively
-    [ "$INSTALL_SESSION_SELECTED_TEAM_KEY" = "OSH" ]
+    [ "$INSTALL_SESSION_SELECTED_TEAM_KEY" = "ACM" ]
     [ -n "$INSTALL_SESSION_SELECTED_TEAM_ID" ]
 }
 
@@ -688,9 +688,9 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() { cat '${INSTALL_TEST_FIXTURE_DIR}/projects_empty.json'; }
-        INSTALL_SESSION_SELECTED_TEAM_ID='6ab43461-6d22-4f02-bb1e-0be9859c7997'
-        INSTALL_SESSION_SELECTED_TEAM_KEY='OSH'
-        INSTALL_SESSION_SELECTED_TEAM_NAME='OSH'
+        INSTALL_SESSION_SELECTED_TEAM_ID='11111111-1111-4111-8111-111111111111'
+        INSTALL_SESSION_SELECTED_TEAM_KEY='ACM'
+        INSTALL_SESSION_SELECTED_TEAM_NAME='ACM'
         install::discover_projects
         install::pick_project_interactively < <(printf '1\n')
         printf 'CHOICE=%s\n' \"\$INSTALL_SESSION_PROJECT_CHOICE\"
@@ -704,9 +704,9 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() { cat '${INSTALL_TEST_FIXTURE_DIR}/projects_multi.json'; }
-        INSTALL_SESSION_SELECTED_TEAM_ID='6ab43461-6d22-4f02-bb1e-0be9859c7997'
-        INSTALL_SESSION_SELECTED_TEAM_KEY='OSH'
-        INSTALL_SESSION_SELECTED_TEAM_NAME='OSH'
+        INSTALL_SESSION_SELECTED_TEAM_ID='11111111-1111-4111-8111-111111111111'
+        INSTALL_SESSION_SELECTED_TEAM_KEY='ACM'
+        INSTALL_SESSION_SELECTED_TEAM_NAME='ACM'
         install::discover_projects
         install::pick_project_interactively < <(printf '2\n')
         printf 'CHOICE=%s NAME=%s\n' \"\$INSTALL_SESSION_PROJECT_CHOICE\" \"\$INSTALL_SESSION_SELECTED_PROJECT_NAME\"
@@ -720,9 +720,9 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() { cat '${INSTALL_TEST_FIXTURE_DIR}/projects_multi.json'; }
-        INSTALL_SESSION_SELECTED_TEAM_ID='6ab43461-6d22-4f02-bb1e-0be9859c7997'
-        INSTALL_SESSION_SELECTED_TEAM_KEY='OSH'
-        INSTALL_SESSION_SELECTED_TEAM_NAME='OSH'
+        INSTALL_SESSION_SELECTED_TEAM_ID='11111111-1111-4111-8111-111111111111'
+        INSTALL_SESSION_SELECTED_TEAM_KEY='ACM'
+        INSTALL_SESSION_SELECTED_TEAM_NAME='ACM'
         install::discover_projects
         install::pick_project_interactively < <(printf '4\n')
         printf 'CHOICE=%s\n' \"\$INSTALL_SESSION_PROJECT_CHOICE\"
@@ -740,12 +740,12 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::mutate() { cat '${INSTALL_TEST_FIXTURE_DIR}/projectCreate_ok.json'; }
-        install::create_linear_project '6ab43461-6d22-4f02-bb1e-0be9859c7997' 'spec-kit-linear'
+        install::create_linear_project '11111111-1111-4111-8111-111111111111' 'spec-kit-linear'
         printf 'NAME=%s URL=%s\n' \"\$INSTALL_SESSION_SELECTED_PROJECT_NAME\" \"\$INSTALL_SESSION_SELECTED_PROJECT_URL\"
     "
     [ "$status" -eq 0 ]
     [[ "$output" == *"NAME=spec-kit-linear"* ]]
-    [[ "$output" == *"URL=https://linear.app/osh-infra/project/"* ]]
+    [[ "$output" == *"URL=https://linear.app/acme/project/"* ]]
 }
 
 @test "T227: duplicate-name triage 'pick-existing' attaches to existing match" {
@@ -753,9 +753,9 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() {
-            printf '%s' '{\"data\":{\"projects\":{\"nodes\":[{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3\"}]}}}'
+            printf '%s' '{\"data\":{\"projects\":{\"nodes\":[{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/acme/project/spec-kit-linear-97bca3d5ede3\"}]}}}'
         }
-        install::_handle_duplicate_name '6ab43461-6d22-4f02-bb1e-0be9859c7997' 'spec-kit-linear' < <(printf 'pick-existing\n')
+        install::_handle_duplicate_name '11111111-1111-4111-8111-111111111111' 'spec-kit-linear' < <(printf 'pick-existing\n')
         printf 'CHOICE=%s NAME=%s\n' \"\$INSTALL_SESSION_PROJECT_CHOICE\" \"\$INSTALL_SESSION_SELECTED_PROJECT_NAME\"
     "
     [ "$status" -eq 0 ]
@@ -771,7 +771,7 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::mutate() { cat '${INSTALL_TEST_FIXTURE_DIR}/projectCreate_fail.json'; }
-        install::create_linear_project '6ab43461-6d22-4f02-bb1e-0be9859c7997' 'spec-kit-linear'
+        install::create_linear_project '11111111-1111-4111-8111-111111111111' 'spec-kit-linear'
     "
     [ "$status" -eq 1 ]
     [[ "$output" == *"permission"* ]]
@@ -869,7 +869,7 @@ _graphql_call_count() {
         printf 'TEAM=%s PROJ=%s\n' \"\$INSTALL_SESSION_SELECTED_TEAM_KEY\" \"\$INSTALL_SESSION_SELECTED_PROJECT_NAME\"
     "
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TEAM=OSH PROJ=spec-kit-linear"* ]]
+    [[ "$output" == *"TEAM=ACM PROJ=spec-kit-linear"* ]]
 }
 
 @test "US1-scenario-2: single-team workspace — team picker silent (auto-pick)" {
@@ -891,9 +891,9 @@ _graphql_call_count() {
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() { printf '%s' '{\"data\":{\"projects\":{\"nodes\":[]}}}'; }
         graphql::mutate() { cat '${INSTALL_TEST_FIXTURE_DIR}/projectCreate_ok.json'; }
-        INSTALL_SESSION_SELECTED_TEAM_ID='6ab43461-6d22-4f02-bb1e-0be9859c7997'
-        INSTALL_SESSION_SELECTED_TEAM_KEY='OSH'
-        INSTALL_SESSION_SELECTED_TEAM_NAME='OSH'
+        INSTALL_SESSION_SELECTED_TEAM_ID='11111111-1111-4111-8111-111111111111'
+        INSTALL_SESSION_SELECTED_TEAM_KEY='ACM'
+        INSTALL_SESSION_SELECTED_TEAM_NAME='ACM'
         install::run_create_project_branch < <(printf 'spec-kit-linear\nY\n')
         printf 'URL=%s\n' \"\$INSTALL_SESSION_SELECTED_PROJECT_URL\"
     "

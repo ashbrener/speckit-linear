@@ -178,4 +178,4 @@ A developer follows the README's Install section. The commands shown work on the
 
 ## Bootstrapping note
 
-This spec is being authored using the v0.1.0 bridge installed against the spec-kit-linear repo itself (meta-dogfood). Each `/speckit.*` command run during the lifecycle of spec 002 will exercise the v0.1.0 bridge's auto-fire path against OSH-INFRA's Linear workspace — the new spec Issue (OSH-15 or similar) tracks 002's progress in real time. The install-ergonomics redesign shipped here will land in v0.1.1, at which point spec 003 onwards will use the new flow.
+This spec is being authored using the v0.1.0 bridge installed against the spec-kit-linear repo itself (meta-dogfood). Each `/speckit.*` command run during the lifecycle of spec 002 will exercise the v0.1.0 bridge's auto-fire path against ACME's Linear workspace — the new spec Issue (ACM-15 or similar) tracks 002's progress in real time. The install-ergonomics redesign shipped here will land in v0.1.1, at which point spec 003 onwards will use the new flow.

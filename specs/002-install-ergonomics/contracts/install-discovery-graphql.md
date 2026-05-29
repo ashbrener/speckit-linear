@@ -73,8 +73,8 @@ query InstallViewer {
       "name": "Ash Brener",
       "email": "ash@example.com",
       "organization": {
-        "name": "OSH Infra",
-        "urlKey": "osh-infra"
+        "name": "ACME Infra",
+        "urlKey": "acme"
       }
     }
   }
@@ -152,9 +152,9 @@ Clarifications Q2 + spec.md Edge Case bullet 2).
     "teams": {
       "nodes": [
         {
-          "id": "6ab43461-6d22-4f02-bb1e-0be9859c7997",
-          "name": "OSH",
-          "key": "OSH"
+          "id": "11111111-1111-4111-8111-111111111111",
+          "name": "ACM",
+          "key": "ACM"
         },
         {
           "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
@@ -170,7 +170,7 @@ Clarifications Q2 + spec.md Edge Case bullet 2).
 **Picker emission format** (FR-039 verbatim):
 
 ```text
-  1) OSH      — OSH
+  1) ACM      — ACM
   2) ENG      — Engineering
 Pick a team [1-2]:
 ```
@@ -225,7 +225,7 @@ query InstallTeamProjects($teamId: String!) {
 **Variables**:
 
 ```json
-{ "teamId": "6ab43461-6d22-4f02-bb1e-0be9859c7997" }
+{ "teamId": "11111111-1111-4111-8111-111111111111" }
 ```
 
 (`teamId` is the operator-selected team's UUID from §2's response.
@@ -237,7 +237,7 @@ The operator never sees this UUID; it's passed internally.)
 {
   "data": {
     "team": {
-      "id": "6ab43461-6d22-4f02-bb1e-0be9859c7997",
+      "id": "11111111-1111-4111-8111-111111111111",
       "projects": {
         "nodes": [
           {
@@ -258,7 +258,7 @@ The operator never sees this UUID; it's passed internally.)
 **Picker emission format** (FR-040 verbatim):
 
 ```text
-Projects in OSH:
+Projects in ACM:
   1) spec-kit-linear
   2) acme-backend
   3) Create new project
@@ -318,7 +318,7 @@ mutation InstallProjectCreate($input: ProjectCreateInput!) {
 {
   "input": {
     "name": "spec-kit-linear",
-    "teamIds": ["6ab43461-6d22-4f02-bb1e-0be9859c7997"],
+    "teamIds": ["11111111-1111-4111-8111-111111111111"],
     "description": "Auto-created by speckit.linear.install for spec-kit lifecycle mirroring."
   }
 }
@@ -356,7 +356,7 @@ mutation InstallProjectCreate($input: ProjectCreateInput!) {
       "project": {
         "id": "97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080",
         "name": "spec-kit-linear",
-        "url": "https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3"
+        "url": "https://linear.app/acme/project/spec-kit-linear-97bca3d5ede3"
       }
     }
   }

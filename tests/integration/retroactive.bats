@@ -131,7 +131,7 @@ retroactive::stage_default_responses() {
     # UUIDs. The reconciler may issue these under IssueCreate /
     # IssueUpdate / save_issue — kind-level fallback serves all of them.
     integration::stage_response 'mutation' \
-        '{"data":{"issueCreate":{"success":true,"issue":{"id":"11111111-1111-4111-1111-111111111111","identifier":"OSH-1","title":"created","state":{"id":"cccccccc-0001-4ccc-cccc-cccccccccccc"}}},"issueUpdate":{"success":true,"issue":{"id":"22222222-2222-4222-2222-222222222222","identifier":"OSH-2","title":"updated","state":{"id":"cccccccc-0001-4ccc-cccc-cccccccccccc"}}}}}'
+        '{"data":{"issueCreate":{"success":true,"issue":{"id":"11111111-1111-4111-1111-111111111111","identifier":"ACM-1","title":"created","state":{"id":"cccccccc-0001-4ccc-cccc-cccccccccccc"}}},"issueUpdate":{"success":true,"issue":{"id":"22222222-2222-4222-2222-222222222222","identifier":"ACM-2","title":"updated","state":{"id":"cccccccc-0001-4ccc-cccc-cccccccccccc"}}}}}'
 
     # Catch-all so an unexpected request still produces valid JSON.
     integration::stage_response 'default' '{"data":{}}'

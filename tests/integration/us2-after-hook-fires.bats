@@ -70,7 +70,7 @@ setup() {
         '{"data":{"issues":{"nodes":[]},"issue":{"blocks":{"nodes":[]}},"comments":{"nodes":[]}}}'
 
     integration::stage_response 'mutation' \
-        '{"data":{"issueCreate":{"success":true,"issue":{"id":"11111111-1111-4111-1111-111111111111","identifier":"OSH-1","title":"created"}}}}'
+        '{"data":{"issueCreate":{"success":true,"issue":{"id":"11111111-1111-4111-1111-111111111111","identifier":"ACM-1","title":"created"}}}}'
 
     integration::stage_response 'default' '{"data":{}}'
 }

@@ -46,7 +46,7 @@ setup() {
     # ---- canned: list_teams returns the single sandbox team ----
     # FR-002: single-team workspaces auto-fill with no prompt.
     integration::stage_response 'query-ListTeams' \
-        '{"data":{"teams":{"nodes":[{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","name":"OSH-INFRA"}]}}}'
+        '{"data":{"teams":{"nodes":[{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","name":"ACME"}]}}}'
 
     # ---- canned: list_projects in the team returns empty ----
     # Forces --auto-create path so install issues exactly one
@@ -55,7 +55,7 @@ setup() {
         '{"data":{"projects":{"nodes":[]}}}'
 
     integration::stage_response 'query' \
-        '{"data":{"teams":{"nodes":[{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"OSH","name":"OSH-INFRA"}]},"projects":{"nodes":[]}}}'
+        '{"data":{"teams":{"nodes":[{"id":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa","key":"ACM","name":"ACME"}]},"projects":{"nodes":[]}}}'
 
     # ---- canned: save_project (or projectCreate) succeeds ----
     integration::stage_response 'mutation-ProjectCreate' \

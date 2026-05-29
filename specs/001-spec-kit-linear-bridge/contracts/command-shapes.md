@@ -203,7 +203,7 @@ bash src/reconcile.sh --read-only [--spec <NNN>] [--all] [--format json|text]
 
 ```text
 spec 001-spec-kit-linear-bridge
-  Linear Issue:    OSH-42 (https://linear.app/osh-infra/issue/OSH-42)
+  Linear Issue:    ACM-42 (https://linear.app/acme/issue/ACM-42)
   Workflow state:  Implementing
   Phase label:     phase:implementing
   Memory block:    branch=001-spec-kit-linear-bridge worktree=/Users/ash/Code/AI/spec-kit-linear last_touched=2026-05-28T12:30Z
@@ -494,7 +494,7 @@ Filesystem dependencies:
   ✓ .specify/extensions.yml writable (6 after_* hooks registered)
 
 Linear binding:
-  ✓ Team:    OSH-INFRA (00000000-0000-0000-0000-000000000abc) [single-team workspace, auto-selected]
+  ✓ Team:    ACME (00000000-0000-0000-0000-000000000abc) [single-team workspace, auto-selected]
   ✓ Project: spec-kit-linear (00000000-0000-0000-0000-000000000def) [created new]
   ✗ Workflow state UUIDs: NOT YET SEEDED
     → Next step: run /spec-kit-linear-seed

@@ -36,8 +36,8 @@ You also need:
 
 - A **Linear workspace** plus a team where you can create Projects,
   Issues, labels, and workflow states. The dogfood workspace
-  `OSH-INFRA` (team `OSH`, UUID
-  `6ab43461-6d22-4f02-bb1e-0be9859c7997`) is the worked example
+  `ACME` (team `ACM`, UUID
+  `11111111-1111-4111-8111-111111111111`) is the worked example
   below.
 - A **personal Linear API key**
   ([linear.app/settings/api](https://linear.app/settings/api)) for
@@ -171,7 +171,7 @@ Every state UUID is written back into `linear.workflow_state_uuids`
 in the config per FR-021 / FR-032. From here on, lookups are
 UUID-only — renames in Linear's UI can't break sync.
 
-Expected output against a fresh `OSH-INFRA`-style workspace:
+Expected output against a fresh `ACME`-style workspace:
 
 ```
 seed: workflow states  → created 9, skipped 0
@@ -249,7 +249,7 @@ modified-timestamps, no activity-log entries (Principle II).
 Open the Projects view for your workspace, e.g.:
 
 ```
-https://linear.app/osh-infra/team/OSH/projects
+https://linear.app/acme/team/ACM/projects
 ```
 
 Confirm:

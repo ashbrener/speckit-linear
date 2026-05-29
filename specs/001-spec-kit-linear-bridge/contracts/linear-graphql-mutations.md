@@ -768,7 +768,7 @@ The 2026-05-28 runtime probe
 introspectable unknown. The four items below are write-side
 behaviours that the read-only probe couldn't exercise; the T077
 dogfood is the canonical write probe and MUST verify each one
-against the live OSH-INFRA workspace.
+against the live ACME workspace.
 
 - **Per-mutation sub-rate-limits.** Per
   `validation/linear-mcp-tool-signatures.md` §2, Linear publishes
@@ -797,7 +797,7 @@ against the live OSH-INFRA workspace.
   UUIDs into a new `default_state_uuids` map in `linear-config.yml`
   (keys: `task_todo`, `task_in_progress`, `task_done`). T077
   dogfood confirms the exact `type` → key mapping against the
-  live OSH-INFRA team.
+  live ACME team.
 
 - **`save_comment` body-mutation on `id` reuse.** Probe §3 documents
   the generic save-mutation contract ("If `id` is provided, updates

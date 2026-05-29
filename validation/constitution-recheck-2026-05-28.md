@@ -271,7 +271,7 @@ Evidence:
 **Verdict: 7 Conform / 1 Conform-with-caveat / 0 Drift. Cleared for merge.**
 
 The Plan B canonical-rebuild commit (`2979d96`) closed the only
-non-trivial Principle II gap surfaced by the OSH-5 dogfood
+non-trivial Principle II gap surfaced by the ACM-5 dogfood
 regression — the splice-per-fence ordering bug. Post-refactor, the
 description layer is a pure filesystem-to-Linear render that does not
 read Linear's current description shape to decide what to write.

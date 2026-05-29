@@ -5,6 +5,13 @@
 *.pem
 *.key
 
+# Per-consumer Linear binding — holds the operator's real workspace/team/
+# project/user UUIDs + identity. Self-describing-repo (Principle V) is
+# satisfied by the committed `config-template.yml`; the resolved
+# `linear-config.yml` is local-only so a public repo never leaks the
+# operator's Linear coordinates. Bootstrap: copy the template, run install.
+.specify/extensions/linear/linear-config.yml
+
 # OS detritus
 .DS_Store
 Thumbs.db
@@ -17,6 +24,10 @@ Thumbs.db
 
 # Claude Code local-only settings (skills under .claude/skills/ are tracked)
 .claude/settings.local.json
+# Agent worktrees — ephemeral, isolated checkouts; never committed
+.claude/worktrees/
+# Local MCP server wiring — machine-specific
+.mcp.json
 
 # Python build artefacts (in case the bridge ships a Python implementation)
 __pycache__/
