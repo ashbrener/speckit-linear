@@ -78,7 +78,7 @@ First public release. Mirror every spec on disk into a Linear Issue, kept in syn
 
 - `README.md` in spec-kit community-extension catalog style.
 - `CONTRIBUTING.md` with full lifecycle walkthrough for changes that add or amend FRs.
-- `BRIEF.md` capturing the original architectural decisions from the BLOK9 planning session.
+- `BRIEF.md` capturing the original architectural decisions from an internal planning session.
 - Five validation artifacts under `validation/` feeding `/speckit-plan`'s research bundle.
 - Full spec.md (36 FRs), plan.md (Constitution Check + Phase 0/1/2), tasks.md (84 tasks across 8 phases), data-model.md (Filesystem + Linear-side schemas), contracts/, quickstart.md.
 

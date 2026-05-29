@@ -46,7 +46,7 @@ Three stock labels, no parents, no label groups. **Zero** match the bridge's con
 
 `projects(first: 50)` returned an empty array. **No Linear Projects exist in this workspace at all.**
 
-Implication: there is no pre-existing `spec-kit-linear`, `wingman`, or `b9-backend` Project to attach to. Every consumer repo (starting with this one) needs the bridge to either create a fresh Project on first sync or use a clearly named pre-existing one. Since none exist, **create-on-first-sync** is the only viable path right now.
+Implication: there is no pre-existing `spec-kit-linear`, `wingman`, or `a backend repo` Project to attach to. Every consumer repo (starting with this one) needs the bridge to either create a fresh Project on first sync or use a clearly named pre-existing one. Since none exist, **create-on-first-sync** is the only viable path right now.
 
 ## Concrete recommendations
 
