@@ -47,7 +47,7 @@ extension:
   # PEP 440 version. We are pre-release while the v1 implementation is
   # being built out under specs/001-spec-kit-linear-bridge/. Bumped to a
   # stable 0.1.0 when the bridge actually ships an end-to-end reconcile.
-  version: "0.1.1"
+  version: "0.1.2"
 
   # One-line description — matches the GitHub repo description so the
   # catalog entry and the README cover read the same way.

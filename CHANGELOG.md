@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing landed yet for v0.1.2. Add entries here as they merge._
+_Nothing landed yet for v0.1.3. Add entries here as they merge._
+
+## [0.1.2] — 2026-05-29
+
+Two reconcile/install bug fixes surfaced by downstream dogfood, plus the governance groundwork for the v0.2.0 drift-aware authority work.
+
+### Fixed
+
+- **Worktree-safe git hooks path (FR-033, #14)** — `install.sh` hardcoded `.git/hooks`, which is wrong in a git **worktree** (where `.git` is a file and hooks live elsewhere). FR-033's local-hook install silently wrote to a path git never reads for any worktree-based operator. Now resolves the hooks directory via `git rev-parse --git-path hooks` (worktree-safe, honors `core.hooksPath`), with a `.git/hooks` fallback and `mkdir -p`.
+- **Detect merged specs from any branch (FR-013/FR-030, #15)** — a merged spec's Linear Issue stayed stuck at its pre-merge lifecycle state when reconciled from a non-feature branch. Root cause: `git_helpers::pr_state` queried `gh pr view --json merged`, but `merged` is not a valid `gh` JSON field — the call always errored and fell through to a git-only branch-reachability probe that can't resolve a deleted/non-local feature branch. Now uses `gh pr list --head <branch> --state all` (resolves by HEAD ref via the API regardless of checked-out branch); lifecycle correctly resolves to `merged` from any worktree.
+
+### Changed — Governance
+
+- **Constitution amended to v2.0.0 (#13)** — Principle IV redefined from "Write-Authority Follows The Worktree" (branch-gate enforcement) to **"Write-Authority Follows The Filesystem (Drift-Aware)"**: any worktree may write; the bridge surfaces backward-drift but does not block (Principle VIII). This is a backward-incompatible _governance_ change (hence the constitution's MAJOR bump) that enables spec 003; it does **not** alter extension runtime behavior in this release — the drift-aware reconcile logic ships when spec 003 is implemented. The extension version line (0.1.2) and the constitution version line (2.0.0) are independent.
+
+### Added — Tooling & docs
+
+- **Dogfood-script interactive-flow block + `linear-install.md` vocab pass (#12)** — `scripts/dogfood.sh --interactive-flow` exercises spec 002's discovery install against a throwaway sandbox repo.
+- **Community-catalog submission draft (#10)** — `validation/community-catalog-submission.md` with the ready-to-paste catalog entry + submission checklist.
+- **Open design-questions parking lot (#18)** — `validation/design-questions.md` (inert, DO-NOT-IMPLEMENT) capturing the spec→Project question (tracking issue #17).
+
+### Housekeeping
+
+- Scrubbed private project names + local filesystem paths from public docs (#16).
 
 ## [0.1.1] — 2026-05-28
 
@@ -88,6 +111,7 @@ First public release. Mirror every spec on disk into a Linear Issue, kept in syn
 - Retroactive sync converges to the right end-state in one reconcile without producing intermediate-phase artifacts in Linear's activity log (FR-014).
 - 16 integration scenarios cover fresh-reconcile, idempotent-rerun, task-added, clarify-mirror, retroactive-sync, install-action, seed-fresh, seed-idempotent, seed-prompt, unseeded-halts, after-hook-fires, git-hook-fires, non-authoritative-worktree, status-staleness, pull-cross-repo.
 
-[Unreleased]: https://github.com/ashbrener/spec-kit-linear/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ashbrener/spec-kit-linear/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/ashbrener/spec-kit-linear/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ashbrener/spec-kit-linear/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ashbrener/spec-kit-linear/releases/tag/v0.1.0
