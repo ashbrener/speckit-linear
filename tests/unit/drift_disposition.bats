@@ -17,6 +17,43 @@ REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 RECONCILE_SH="${REPO_ROOT}/src/reconcile.sh"
 SUMMARY_SH="${REPO_ROOT}/src/summary.sh"
 
+# Portable hang-guard for the SC-019 / A10 "never hangs" assertions.
+#
+# GNU coreutils `timeout` is NOT on macOS by default (and `gtimeout` only
+# exists with a brew install), so a bare `run timeout 5 …` makes the bats
+# (macos-latest) CI job fail with `timeout: command not found`. Prefer the
+# real binary when present (Linux CI), otherwise fall back to a bash-native
+# watcher that kills the command after N seconds — same time-bound, same
+# no-hang intent, no external dependency.
+#
+# Usage: run _timeout SECONDS cmd args...   (mirrors `timeout SECONDS cmd…`).
+if command -v timeout >/dev/null 2>&1; then
+  _TIMEOUT_BIN="$(command -v timeout)"
+elif command -v gtimeout >/dev/null 2>&1; then
+  _TIMEOUT_BIN="$(command -v gtimeout)"
+else
+  _TIMEOUT_BIN=""
+fi
+
+_timeout() {
+  local secs="$1"; shift
+  if [ -n "$_TIMEOUT_BIN" ]; then
+    "$_TIMEOUT_BIN" "$secs" "$@"
+    return $?
+  fi
+  # Bash-native fallback: run the command, kill it if it outlives `secs`.
+  "$@" &
+  local pid=$!
+  ( sleep "$secs"; kill -TERM "$pid" 2>/dev/null ) &
+  local watcher=$!
+  wait "$pid" 2>/dev/null
+  local rc=$?
+  # Stop the watcher (it has either already fired or is still sleeping).
+  kill "$watcher" 2>/dev/null
+  wait "$watcher" 2>/dev/null
+  return "$rc"
+}
+
 # Run reconcile::parse_args in an isolated subshell with the given args and
 # echo the resolved ARG_ON_DRIFT / ARG_RETROACTIVE. We stop right after
 # parse_args so no config load or network fires.
@@ -256,7 +293,7 @@ _drift_src='source "'"$SUMMARY_SH"'"; source "'"$RECONCILE_SH"'" 2>/dev/null'
 @test "US2/T334: non-interactive disposition NEVER hangs awaiting input (SC-019)" {
   # No --on-drift, no TTY → must resolve deterministically (proceed) without
   # blocking on a read. A 5s timeout guards against a regression to a hang.
-  run timeout 5 bash -c "$_drift_src; reconcile::_drift_disposition 005 'fired=1 phase_drift=1 recency_drift=0 signals=phase_ordering disk=planning linear=implementing' < /dev/null"
+  run _timeout 5 bash -c "$_drift_src; reconcile::_drift_disposition 005 'fired=1 phase_drift=1 recency_drift=0 signals=phase_ordering disk=planning linear=implementing' < /dev/null"
   [ "$status" -eq 0 ]
   [ "$output" = "proceed" ]
 }
@@ -395,7 +432,7 @@ _prompt() {
   # Empty answer file → immediate EOF on read → abort, under a 5s hang guard.
   local tty_file="$BATS_TEST_TMPDIR/empty.$$"
   : > "$tty_file"
-  run timeout 5 bash -c "$_drift_src; RECONCILE_DRIFT_TTY='$tty_file' reconcile::_drift_prompt 005 2>/dev/null"
+  run _timeout 5 bash -c "$_drift_src; RECONCILE_DRIFT_TTY='$tty_file' reconcile::_drift_prompt 005 2>/dev/null"
   [ "$status" -eq 0 ]
   [ "$output" = "abort" ]
 }
