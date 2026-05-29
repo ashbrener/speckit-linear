@@ -276,3 +276,26 @@ _commit_spec_at() {
   max_line="$(printf '%s\n' "${lines[@]}" | sort -t$'\t' -k1,1n | tail -1)"
   [[ "$max_line" == *"repo-feature"*$'\t'"006-bar" ]]
 }
+
+@test "worktrees_touching_spec: epoch tie → invoking worktree canonical, both in the touching set (T336c)" {
+  # Two worktrees touching specs/007-baz with the SAME spec-dir commit epoch.
+  # The invoking worktree (emitted first by git worktree list) is canonical
+  # on a tie; both still appear in the set (FR-058 / FR-059 / recency §4).
+  _commit_spec_at "specs/007-baz" "2026-05-22T12:00:00+00:00"
+  local wt="$BATS_TEST_TMPDIR/repo-feature-007"
+  git -C "$REPO" worktree add --quiet -b 007-baz "$wt" main
+  # The feature worktree shares the identical spec-dir commit (no new commit),
+  # so both worktrees resolve to the same commit epoch — a true tie.
+  run bash -c "cd '$REPO' && source '$GIT_HELPERS_SH' && git_helpers::worktrees_touching_spec 007"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  # Both lines carry the same epoch (the tie).
+  local e0 e1
+  e0="$(printf '%s' "${lines[0]}" | cut -f1)"
+  e1="$(printf '%s' "${lines[1]}" | cut -f1)"
+  [ "$e0" = "$e1" ]
+  # The invoking worktree (the main /repo checkout) is emitted first → it is
+  # the tie-break canonical; both paths are present in the touching set.
+  [[ "$output" == *"/repo"$'\t'"main"* ]]
+  [[ "$output" == *"repo-feature-007"*$'\t'"007-baz"* ]]
+}

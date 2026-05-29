@@ -114,13 +114,25 @@ Default: `--all --human`.
        differs, branch differs from the memory block, last-touched is
        older than Linear's last activity (FR-026 "Linear knows
        something disk doesn't"), task checklist count differs.
-     - **Authority status** — drift posture per Principle IV v2.0.0
-       (spec 003): reports whether writing this spec from the current
-       worktree would be a clean forward write or trigger a
-       backward-drift warning (Linear ahead of disk). In the shipped
-       (pre-spec-003) build this field reflects the legacy
-       `git_helpers::is_authoritative_for_spec` branch-gate (Yes/No);
-       both are superseded by the drift-aware signal once spec 003 lands.
+     - **Drift status** — the backward-drift posture per Principle IV
+       v2.0.0 (spec 003): reports whether writing this spec from the
+       current worktree would be a clean forward write or trigger a
+       backward-drift warning (Linear ahead of disk). This is a
+       NON-GATING display hint — the FR-025 branch-gate is removed
+       (FR-051); reconcile writes from any worktree and only SURFACES
+       drift, never refuses (FR-060). The legacy
+       `git_helpers::is_authoritative_for_spec` flag is retained ONLY as
+       an informational "is this the canonical feature-branch worktree?"
+       cue, never a write decision.
+     - **Canonical-right-now worktree** — when more than one worktree
+       has `specs/NNN-feature/` checked out, the report names the
+       worktree holding the MOST RECENT commit touching the spec dir
+       (per `git_helpers::worktrees_touching_spec`, FR-058/FR-059). The
+       ranking uses spec-dir git-commit time, NEVER branch name or
+       mtime, so the pointer agrees with the drift signal. The
+       single-worktree case omits this field. See
+       [`recency-comparison.md`](../specs/003-drift-aware-authority/contracts/recency-comparison.md)
+       for the recency-key contract.
    - Renders the per-spec report on stdout (JSON array or human
      table) and the structured summary on stderr.
 
@@ -242,4 +254,5 @@ This command implements (in whole or in part):
 - **FR-023** — structured `summary::emit` block on stderr.
 - **FR-025** — per-spec write-authority status surfaced in the report (the v1.0.0 branch-gate is SUPERSEDED by Constitution Principle IV v2.0.0 / spec 003 drift-aware signal, FR-051..FR-060).
 - **FR-026 / FR-060** — read-only inspection; current Linear state and drift surfaced without any write attempt.
+- **FR-058 / FR-059** — the canonical-right-now worktree pointer (most-recent spec-dir commit across worktrees, ranked by git-commit time) surfaced when >1 worktree touches the spec.
 - **FR-004b** — `speckit-spec:NNN` label is the lookup key for the Linear-side fetch.

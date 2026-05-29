@@ -14,8 +14,8 @@
 # documents the exact assertion its live body will carry so the contract is
 # legible before the wiring.
 #
-# US2 (T331/T332) and US3 (T341/T342) scenarios are added by their own phases
-# in this same file.
+# US2 (T331/T332) and US3 (T341/T342) skip-gated placeholders land here too;
+# their live bodies join the US1 ones in the Phase 6 dogfood harness (T352).
 # =============================================================================
 
 load '../helpers/integration-helpers'
@@ -208,4 +208,72 @@ ENV
     #   * assert the advance is WRITTEN (state + phase:implementing label) and
     #     NO drift warning row appears — forward movement is the normal write
     #     case and MUST be silent (SC-017, the zero-false-positive guarantee).
+}
+
+# =============================================================================
+# Phase 4 (US2) — retroactive first-reconcile + --retroactive parity
+# =============================================================================
+
+# T331 — US2 retroactive first-reconcile end-to-end (SC-015 + FR-062 + AS1)
+@test "drift-e2e US2: retroactive first-reconcile converges 100% with zero flags" {
+    integration::skip_unless_enabled
+    skip "T331 placeholder — live body lands with the dogfood harness (Phase 6 / T352)"
+
+    # Live body (T352) will:
+    #   * mount a fresh repo with several specs (a mix of merged + in-flight),
+    #     no feature-branch worktree, EMPTY Linear (no pre-existing Issues)
+    #   * run integration::run_reconcile  (NO flags, NO --retroactive)
+    #   * assert 100% of enumerated specs are created/updated to match disk,
+    #     NO spec skipped for write-authority reasons (the FR-025 gate is gone),
+    #     and NO spurious backward-drift warning fires — every spec's Linear
+    #     Issue is absent, so compute_drift returns fired=0 (SC-015 / FR-062).
+}
+
+# T332 — US2 --retroactive parity (SC-021 + Acceptance Scenario 2)
+@test "drift-e2e US2: --retroactive runs identically + emits exactly one INFO row" {
+    integration::skip_unless_enabled
+    skip "T332 placeholder — live body lands with the dogfood harness (Phase 6 / T352)"
+
+    # Live body (T352) will:
+    #   * run the T331 flow a second time WITH --retroactive
+    #   * assert convergence is byte-identical to the no-flag run (no-op alias)
+    #   * assert EXACTLY ONE INFO deprecation row appears in the summary,
+    #     regardless of how many specs are processed (drift-warning-surface §6).
+}
+
+# =============================================================================
+# Phase 5 (US3) — multi-worktree interactive abort/proceed + --on-drift=abort
+# =============================================================================
+
+# T341 — US3 multi-worktree interactive abort/proceed (SC-018 + SC-020 + AS1-3)
+@test "drift-e2e US3: multi-worktree interactive abort leaves Linear unchanged; proceed overwrites" {
+    integration::skip_unless_enabled
+    skip "T341 placeholder — live body lands with the dogfood harness (Phase 6 / T352)"
+
+    # Live body (T352) will:
+    #   * set up TWO worktrees on one repo: one on `main` (behind), one on
+    #     NNN-feature (ahead — spec advanced to implementing), with Linear
+    #     reflecting the feature branch's advanced phase
+    #   * run integration::run_reconcile from main with a /dev/tty stand-in
+    #     (RECONCILE_DRIFT_TTY) driving the prompt:
+    #       - ABORT answer  → assert ZERO Linear mutation for the drifted spec
+    #         (zero label timestamps, zero comments, zero relations — SC-018),
+    #         the WARNING row names BOTH worktree paths + the canonical
+    #         most-recent-commit holder (SC-020 / FR-058), and the spec is
+    #         recorded skipped-by-operator.
+    #       - PROCEED answer → assert Linear is overwritten from main's disk
+    #         view and the override is recorded in the summary (AS3).
+}
+
+# T342 — US3 --on-drift=abort non-interactive skip (SC-019 + Acceptance Scenario 4)
+@test "drift-e2e US3: --on-drift=abort non-interactively skips the drifted spec with no prompt" {
+    integration::skip_unless_enabled
+    skip "T342 placeholder — live body lands with the dogfood harness (Phase 6 / T352)"
+
+    # Live body (T352) will:
+    #   * use the same two-worktree setup as T341, run from main NON-interactively
+    #     (no TTY) with --on-drift=abort
+    #   * assert the drifted spec is skipped with a WARNING row + skip note,
+    #     NO prompt fires (SC-019 — never hangs), and ZERO Linear mutation lands
+    #     for that spec (FR-057).
 }

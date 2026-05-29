@@ -604,6 +604,30 @@ reconcile::render_memory_block() {
         source_cell="\`(local: ${spec_dir})\`"
     fi
 
+    # Canonical-right-now worktree pointer (FR-058 / T345). Only present
+    # when MORE THAN ONE worktree touches the spec dir; the single-worktree
+    # case omits the row entirely so the common memory block is unchanged
+    # (additive field, data-model §4). Ranked by spec-dir commit time
+    # (FR-059), never branch name or mtime — reuses _drift_worktree_lines'
+    # canonical selection so the WARNING row and memory block agree.
+    local canonical_row=""
+    local touching_raw
+    touching_raw="$(git_helpers::worktrees_touching_spec "$feature_number" 2>/dev/null || true)"
+    if [[ -n "$touching_raw" ]]; then
+        local touching_count
+        touching_count="$(printf '%s\n' "$touching_raw" | grep -c .)"
+        if (( touching_count > 1 )); then
+            local canon_line canon_path canon_branch
+            canon_line="$(printf '%s\n' "$touching_raw" | sort -t$'\t' -k1,1nr -s | head -1)"
+            canon_path="$(printf '%s' "$canon_line" | cut -f2)"
+            canon_branch="$(printf '%s' "$canon_line" | cut -f3)"
+            # Leading newline so the row drops onto its own line directly
+            # after Worktree(s) inside the heredoc (an empty $canonical_row
+            # adds nothing — single-worktree collapse, data-model §4).
+            canonical_row=$'\n'"| **Canonical worktree** | \`${canon_path}\` (branch \`${canon_branch:-detached}\`) — most recent spec-dir commit |"
+        fi
+    fi
+
     # Title-case the lifecycle phase for human display.
     local phase_display
     case "$lifecycle_phase" in
@@ -639,13 +663,17 @@ reconcile::render_memory_block() {
     # Markdown table — fixed column order (Field / Value). The caller
     # (compose_issue_description) concatenates this block into the
     # bridge-owned description body.
+    # The canonical-worktree row is emitted directly after Worktree(s) when
+    # present (multi-worktree case); the surrounding cat preserves the fixed
+    # column order. Empty $canonical_row collapses to a blank line that
+    # render_memory_block's consumers tolerate (matches $last_reconciled_row).
     if [[ -n "$last_reconciled_row" ]]; then
         cat <<EOF
 | Field | Value |
 |---|---|
 | **Phase** | ${phase_display} |
 | **Branch** | \`${feature_branch}\` |
-| **Worktree(s)** | ${worktree_cell} |
+| **Worktree(s)** | ${worktree_cell} |${canonical_row}
 | **Last touched** | ${last_touched_cell} |
 ${last_reconciled_row}
 | **Source** | ${source_cell} |
@@ -657,7 +685,7 @@ EOF
 |---|---|
 | **Phase** | ${phase_display} |
 | **Branch** | \`${feature_branch}\` |
-| **Worktree(s)** | ${worktree_cell} |
+| **Worktree(s)** | ${worktree_cell} |${canonical_row}
 | **Last touched** | ${last_touched_cell} |
 | **Source** | ${source_cell} |
 | **Spec** | ${feature_number}-${short_name} |
@@ -2780,9 +2808,10 @@ reconcile::_fetch_drift_issue_json() {
 #   detail line ONLY when the recency signal fired (the verdict line
 #   carries the detail fields exactly then, per A9).
 #
-#   The multi-worktree canonical/touching lines (FR-058) are US3's
-#   T345 — Phase 3 emits the single-worktree shape, which per the
-#   contract §2 "collapses to nothing".
+#   The multi-worktree canonical/touching lines (FR-058) are appended by
+#   reconcile::_drift_worktree_lines (T345) when >1 worktree touches the
+#   spec; the common single-worktree case collapses them to nothing
+#   (contract §2).
 reconcile::_emit_drift_warning() {
     local feature_number="${1:-}" verdict="${2:-}"
 
@@ -2802,45 +2831,173 @@ reconcile::_emit_drift_warning() {
         row+=$'\n'"         spec dir last commit ${disk_iso}  <  linear updatedAt ${linear_iso} (> ${skew}s)"
     fi
 
+    # Multi-worktree canonical/touching lines (FR-058 / T345). Collapses to
+    # nothing in the single-worktree case (contract §2).
+    local worktree_lines
+    worktree_lines="$(reconcile::_drift_worktree_lines "$feature_number")"
+    if [[ -n "$worktree_lines" ]]; then
+        row+=$'\n'"$worktree_lines"
+    fi
+
     summary::add warned "$row"
 }
 
-# reconcile::_drift_disposition <feature_number> <verdict_line>    (T326)
-#   THE DISPOSITION FORK — the Phase 4/5 extension point.
+# reconcile::_drift_worktree_lines <feature_number>                (T345)
+#   Render the canonical-worktree + touching-set lines of the drift
+#   WARNING row (FR-058 / FR-059 / drift-warning-surface §2) from
+#   git_helpers::worktrees_touching_spec (T303). The canonical worktree
+#   is the MAX commit-epoch line (most recent spec-dir commit — never the
+#   branch name or mtime); ties resolve to the first/invoking row. Echoes
+#   nothing when ≤1 worktree touches the spec (single-worktree collapse).
+#   PURE-ish: only reads the git worktree topology; mutates nothing.
+reconcile::_drift_worktree_lines() {
+    local feature_number="${1:-}"
+    [[ -n "$feature_number" ]] || return 0
+
+    local raw
+    raw="$(git_helpers::worktrees_touching_spec "$feature_number" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || return 0
+
+    # Count touching worktrees; collapse to nothing in the single case.
+    local count
+    count="$(printf '%s\n' "$raw" | grep -c .)"
+    (( count > 1 )) || return 0
+
+    # Canonical = MAX epoch (stable sort keeps the first row on an epoch
+    # tie → the invoking worktree, which git_helpers emits first).
+    local canonical_line canon_path canon_branch
+    canonical_line="$(printf '%s\n' "$raw" | sort -t$'\t' -k1,1nr -s | head -1)"
+    canon_path="$(printf '%s' "$canonical_line" | cut -f2)"
+    canon_branch="$(printf '%s' "$canonical_line" | cut -f3)"
+
+    local out
+    out="         canonical worktree: ${canon_path} (branch ${canon_branch:-detached}) — most recent spec-dir commit"
+
+    # Touching set: every worktree, "path (branch)", joined with ", ".
+    local set_csv path branch
+    while IFS=$'\t' read -r _ path branch; do
+        [[ -n "$path" ]] || continue
+        local entry="${path} (${branch:-detached})"
+        if [[ -z "${set_csv:-}" ]]; then
+            set_csv="$entry"
+        else
+            set_csv="${set_csv}, ${entry}"
+        fi
+    done <<< "$raw"
+    out+=$'\n'"         touching worktrees: ${set_csv}"
+
+    printf '%s\n' "$out"
+}
+
+# reconcile::_drift_prompt <feature_number>                        (T343)
+#   The interactive backward-drift prompt (FR-055, drift-warning-surface
+#   §3). Reads the operator's proceed/abort choice from the CONTROLLING
+#   TERMINAL (`/dev/tty`), NOT the inherited stdin (A10 — the prompt MUST
+#   NOT consume the spec-enumeration stdin stream). Re-prompts on invalid
+#   input; empty-enter is the safe default `abort` (plan A5). Echoes the
+#   resolved disposition (`proceed` | `abort`).
 #
-#   Resolves what to do with a spec whose backward-drift fired
-#   (data-model §5 state machine). Echoes exactly one of:
+#   The tty source is overridable via `RECONCILE_DRIFT_TTY` so the bats
+#   prompt-body tests can drive a here-string/file in place of a real
+#   terminal (mirrors the `_GIT_HELPERS_GIT_BIN` seam idiom). In
+#   production it is unset and the prompt reads `/dev/tty` directly.
+reconcile::_drift_prompt() {
+    local feature_number="${1:-}"
+    local tty_src="${RECONCILE_DRIFT_TTY:-/dev/tty}"
+
+    # Open the controlling terminal (or its test stand-in) ONCE on fd 3 so the
+    # answer read never disturbs — or gets disturbed by — the inherited stdin
+    # (A10), and consecutive reads on a re-prompt advance through the input
+    # rather than re-reading the first line. The prompt copy goes to stderr so
+    # the disposition word on stdout stays clean for command substitution.
+    # A tty that cannot be opened (no controlling terminal) collapses to the
+    # safe abort default (SC-019: never hang, never silently proceed).
+    if ! exec 3< "$tty_src" 2>/dev/null; then
+        printf 'abort\n'
+        return 0
+    fi
+
+    local ans
+    while true; do
+        # Prompt copy is verbatim from drift-warning-surface §3.
+        printf 'spec %s — Linear appears ahead of this worktree. Overwrite Linear from disk? [p]roceed / [a]bort (default: abort): ' \
+            "$feature_number" >&2
+
+        # Read one line from fd 3. A failed read (EOF / closed tty) collapses
+        # to the safe abort default.
+        if ! read -r ans <&3; then
+            exec 3<&-
+            printf 'abort\n'
+            return 0
+        fi
+
+        case "$ans" in
+            p|P|proceed|PROCEED)
+                exec 3<&-
+                printf 'proceed\n'
+                return 0
+                ;;
+            a|A|abort|ABORT|'')
+                # Empty-enter = abort (plan A5: the safe default).
+                exec 3<&-
+                printf 'abort\n'
+                return 0
+                ;;
+            *)
+                # Invalid input re-prompts — never crash, never silently pick.
+                printf 'spec %s — please answer p (proceed) or a (abort).\n' \
+                    "$feature_number" >&2
+                ;;
+        esac
+    done
+}
+
+# reconcile::_drift_disposition <feature_number> <verdict_line>    (T326)
+#   THE DISPOSITION FORK — both arms of the warn-not-block state machine
+#   (data-model §5). Echoes exactly one of:
 #       proceed   — overwrite Linear from disk (write continues)
 #       abort     — skip the spec, leave Linear unchanged (FR-057)
 #
 #   Only consulted when fired=1 (the caller writes silently on fired=0).
 #
-#   PHASE 3 (US1 spine) lands ONLY the proceed-and-warn default arm.
-#   The two TTY-gated arms slot in here in later phases and MUST NOT be
-#   implemented now:
-#     * Phase 5 / US3 (T343): interactive arm `[[ -t 0 ]]` — prompt the
-#       operator proceed/abort via `read -r ans < /dev/tty`
-#       (drift-warning-surface §3; empty=abort per plan A5).
-#     * Phase 4 / US2 (T334): non-interactive arm `[[ ! -t 0 ]]` —
-#       consult `ARG_ON_DRIFT` (`abort` → abort; unset/`proceed` →
-#       proceed). MUST NOT hang awaiting input (SC-019).
-#   Both layer ON TOP of this fork; the default below is the safe,
-#   ship-independent US1 behaviour: proceed-and-warn (the WARNING row
-#   has already been emitted by the caller before this is consulted).
+#   Resolution precedence (T334 non-interactive arm + T343 interactive arm):
+#     1. An EXPLICIT `--on-drift` (ARG_ON_DRIFT=abort|proceed) is an
+#        operator OVERRIDE and wins everywhere — even on a TTY it skips
+#        the prompt (FR-056: the flag lets the operator override the
+#        default; T339: "no prompt even on a TTY-less run").
+#     2. No explicit flag + interactive (`[[ -t 0 ]]`) → prompt the
+#        operator proceed/abort via /dev/tty (FR-055; empty=abort, A5).
+#     3. No explicit flag + non-interactive (`[[ ! -t 0 ]]`) →
+#        proceed-and-warn default (FR-056). MUST NOT hang (SC-019).
+#
+#   The WARNING row has already been emitted by the caller before this is
+#   consulted (the audit trail holds regardless of disposition, FR-054).
 reconcile::_drift_disposition() {
     local feature_number="${1:-}" verdict="${2:-}"
-    : "${feature_number:-}" "${verdict:-}"  # consumed by Phase 4/5 arms
+    : "${verdict:-}"  # reserved for richer disposition logic (multi-signal)
 
-    # --- Phase 4/5 EXTENSION POINT (do not implement here) -------------
-    # if [[ -t 0 ]]; then
-    #     # Phase 5 / US3 / T343 — interactive prompt via /dev/tty.
-    # else
-    #     # Phase 4 / US2 / T334 — non-interactive ARG_ON_DRIFT resolution.
-    # fi
-    # ------------------------------------------------------------------
+    # 1. Explicit --on-drift override — honoured in BOTH TTY arms, no prompt.
+    case "${ARG_ON_DRIFT:-}" in
+        abort)
+            printf 'abort\n'
+            return 0
+            ;;
+        proceed)
+            printf 'proceed\n'
+            return 0
+            ;;
+        *) : ;;  # unset → fall through to the TTY-gated default
+    esac
 
-    # Phase 3 default: proceed-and-warn (FR-056 default). Forward/no-drift
-    # writes never reach this fork — the caller short-circuits on fired=0.
+    # 2. Interactive arm (T343): prompt the operator. Gated on a real TTY so
+    #    hooks/CI never reach the prompt (they take arm 3).
+    if [[ -t 0 ]]; then
+        reconcile::_drift_prompt "$feature_number"
+        return 0
+    fi
+
+    # 3. Non-interactive arm (T334): proceed-and-warn default (FR-056). The
+    #    WARNING row already recorded the drift for the CI audit trail.
     printf 'proceed\n'
 }
 
