@@ -3,32 +3,21 @@
 # =============================================================================
 # tests/integration/us5-retroactive-bypass-authority.bats — User Story 5
 #
-# Regression-pin for the v0.1.0 bug surfaced during the downstream dogfood
-# run: `bash src/reconcile.sh --all --retroactive` completed with ZERO
-# mutations when invoked from any branch that didn't match a spec's
-# canonical NNN-feature name. The cause was that `--retroactive` only
-# suppressed the per-spec "non-authoritative" warning row in
-# `summary::emit`; it did NOT actually bypass the FR-025 / Principle IV
-# write-authority gate inside `reconcile::sync_spec_issue`'s caller.
+# History: this file originally regression-pinned the v0.1.0 `--retroactive`
+# bypass of the FR-025 write-authority gate. Spec 003 (constitution v2.0.0,
+# Principle IV amended) REMOVES that gate (T324): writing from any branch is
+# now the unconditional default (FR-051), and `--retroactive` is a deprecated
+# no-op alias (FR-061). The two scenarios below are REPURPOSED (A14 / T347) to
+# pin the new, gate-free behaviour so they stay the SC-014 / SC-022 regression
+# guard rather than asserting the now-deleted gate:
 #
-# Per FR-014 + `commands/linear-push.md`, `--retroactive` is the
-# operator-facing escape hatch for first-time-adoption: it MUST
-# converge every spec into Linear regardless of which branch the
-# operator is on, because spec-specific feature branches may not
-# exist yet (or may have been deleted post-merge).
+#   1. From a non-NNN branch (`feat/unrelated`), `--retroactive --all` writes
+#      every spec AND emits exactly one INFO deprecation row (FR-061) — no
+#      per-spec bypass/non-authoritative row (the old aggregate row is gone).
 #
-# This file proves the contract end-to-end against a mocked GraphQL
-# endpoint. Two scenarios:
-#
-#   1. Bypass ON: three specs, the current branch is `feat/unrelated`
-#      (i.e. matches no NNN- prefix), `--retroactive --all` MUST trigger
-#      one mutation per spec AND the summary block MUST carry the
-#      aggregate INFO row naming the bypass count.
-#
-#   2. Bypass OFF (regression-pin for the default FR-025 gate): same
-#      setup, same `--all`, but WITHOUT `--retroactive`. All three
-#      specs MUST be skipped, zero mutations issued, and the summary's
-#      Skipped counter MUST be >= 3.
+#   2. From the SAME branch, bare `--all` (NO `--retroactive`) writes every
+#      spec too — the gate removal means write-from-anywhere needs no flag.
+#      Zero specs are skipped for write-authority reasons.
 #
 # Both scenarios gate on RUN_INTEGRATION_TESTS=1 per repo convention
 # (helper-side via integration::skip_unless_enabled).
@@ -167,10 +156,11 @@ ENV
 }
 
 # =============================================================================
-# Scenario 1: BYPASS ON — `--retroactive --all` from `feat/unrelated`
-# writes for every spec (the FR-014 first-time-adoption contract).
+# Scenario 1: `--retroactive --all` from `feat/unrelated` writes every spec
+# AND emits exactly one deprecation INFO row (FR-061). The flag is a no-op
+# alias now — write-from-anywhere is the gate-free default (FR-051).
 # =============================================================================
-@test "us5: --retroactive --all from non-NNN branch writes every spec (FR-014 bypass)" {
+@test "us5: --retroactive --all from non-NNN branch writes every spec + one deprecation INFO (FR-061)" {
     integration::skip_unless_enabled
     us5_bypass::setup_three_spec_unrelated_branch
 
@@ -198,27 +188,25 @@ ENV
     [ "$spec002_mutations" -ge 1 ]
     [ "$spec004_mutations" -ge 1 ]
 
-    # ---- assertion 2: summary carries the aggregate INFO row ----
+    # ---- assertion 2: exactly one --retroactive deprecation INFO row ----
     [[ "$output" == *"speckit.linear summary"* ]]
     local summary_block
     summary_block="$(printf '%s\n' "$output" \
         | awk '/===== speckit\.linear summary =====/,/^==================================$/')"
-    # The aggregate row names the bypass and the branch.
-    [[ "$summary_block" == *"retroactive:"* ]]
-    [[ "$summary_block" == *"non-authoritative"* ]]
-    [[ "$summary_block" == *"feat/unrelated"* ]]
-    # Per-spec skip rows MUST NOT appear — the bypass replaces them.
-    [[ "$summary_block" != *"spec 001: non-authoritative"* ]]
-    [[ "$summary_block" != *"spec 002: non-authoritative"* ]]
-    [[ "$summary_block" != *"spec 004: non-authoritative"* ]]
+    # FR-061 deprecation INFO (one per invocation, not per spec).
+    [[ "$summary_block" == *"--retroactive is deprecated"* ]]
+    # The OLD per-spec read-only-skip / bypass aggregate row MUST be gone.
+    [[ "$summary_block" != *"non-authoritative"* ]]
+    [[ "$summary_block" != *"retroactive:"* ]]
 }
 
 # =============================================================================
-# Scenario 2: BYPASS OFF — `--all` (no `--retroactive`) from the same
-# `feat/unrelated` branch MUST skip every spec, zero mutations issued.
-# Regression-pin for the default FR-025 write-authority gate.
+# Scenario 2: bare `--all` (NO `--retroactive`) from the same `feat/unrelated`
+# branch ALSO writes every spec. The FR-025 gate is REMOVED (T324) —
+# write-from-anywhere needs no flag (FR-051 / SC-014). Repurposed from the
+# old "skips every spec" regression-pin (A14).
 # =============================================================================
-@test "us5: --all (no --retroactive) from non-NNN branch skips every spec (FR-025 default)" {
+@test "us5: --all (no flag) from non-NNN branch writes every spec (FR-025 gate removed)" {
     integration::skip_unless_enabled
     us5_bypass::setup_three_spec_unrelated_branch
 
@@ -230,34 +218,23 @@ ENV
     run integration::run_reconcile --all
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 
-    # ---- assertion 1: zero mutations across every spec ----
-    # The read-only-display path may issue `query-LocateSpecIssue`
-    # reads (which legitimately embed `speckit-spec:NNN` as a filter),
-    # but MUST NOT issue any mutations. The total mutation count is
-    # the strongest assertion: zero mutations, period.
-    local total_mutations
-    total_mutations="$(us5_bypass::count_total_mutations)"
-    [ "$total_mutations" -eq 0 ]
-
-    # Belt-and-braces: explicitly check each spec label was not used
-    # in any mutation body either.
+    # ---- assertion 1: every spec triggered a mutation (gate is gone) ----
     local spec001_mutations spec002_mutations spec004_mutations
     spec001_mutations="$(us5_bypass::count_mutations_containing 'speckit-spec:001')"
     spec002_mutations="$(us5_bypass::count_mutations_containing 'speckit-spec:002')"
     spec004_mutations="$(us5_bypass::count_mutations_containing 'speckit-spec:004')"
-    [ "$spec001_mutations" -eq 0 ]
-    [ "$spec002_mutations" -eq 0 ]
-    [ "$spec004_mutations" -eq 0 ]
+    [ "$spec001_mutations" -ge 1 ]
+    [ "$spec002_mutations" -ge 1 ]
+    [ "$spec004_mutations" -ge 1 ]
 
-    # ---- assertion 2: summary's Skipped counter is >= 3 ----
+    # ---- assertion 2: NO write-authority skip rows, no deprecation row ----
     [[ "$output" == *"speckit.linear summary"* ]]
     local summary_block
     summary_block="$(printf '%s\n' "$output" \
         | awk '/===== speckit\.linear summary =====/,/^==================================$/')"
-    # Every spec entered the read-only display path → at least one
-    # skipped event per spec landed in summary.
-    [[ "$summary_block" == *"Skipped:"* ]]
-    [[ "$summary_block" == *"non-authoritative"* ]]
-    # And the aggregate INFO row MUST NOT appear (bypass never fired).
-    [[ "$summary_block" != *"retroactive:"* ]]
+    # No spec is skipped for write-authority reasons (the gate is removed).
+    [[ "$summary_block" != *"non-authoritative"* ]]
+    [[ "$summary_block" != *"read-only mode"* ]]
+    # --retroactive was NOT passed, so no deprecation INFO row.
+    [[ "$summary_block" != *"--retroactive is deprecated"* ]]
 }

@@ -9,7 +9,10 @@ arguments:
     description: log mutations without executing them
     optional: true
   - name: retroactive
-    description: "DEPRECATED (Constitution Principle IV v2.0.0 / spec 003 FR-061) — first-time-adoption mode (FR-014); historically bypassed the FR-025 write-authority gate. Once spec 003 lands this becomes a no-op alias because writing from any branch is the default. Implies --all"
+    description: "DEPRECATED no-op alias (Constitution Principle IV v2.0.0 / spec 003 FR-061). Writing from any branch is now the default, so this flag changes nothing; it emits exactly one deprecation INFO row. Still implies --all. Removed in a later release."
+    optional: true
+  - name: on-drift
+    description: "abort|proceed — non-interactive backward-drift disposition (spec 003 FR-056). Default (unset) is proceed-and-warn: write the disk state and record a WARNING. `abort` skips drifted specs with a WARNING + skip note instead of writing. No effect when no drift fires."
     optional: true
 ---
 
@@ -18,7 +21,8 @@ arguments:
 ## Summary
 
 Reconcile every `specs/NNN-feature/` directory in the consumer repo
-into Linear (filesystem → Linear, idempotent, write-authority-gated).
+into Linear (filesystem → Linear, idempotent, drift-aware — writes from
+any worktree, warns on backward-drift, never blocks).
 
 Reconcile the consumer repo's `specs/NNN-feature/` directories into
 Linear. This is the load-bearing path that mirrors filesystem state
@@ -28,15 +32,24 @@ relations, clarify-session comments, and lifecycle-phase labels.
 **Direction**: one-way, filesystem → Linear (Principle I).
 **Semantics**: idempotent (Principle II — zero-churn on unchanged
 state, SC-002).
-**Authority**: drift-aware (Constitution Principle IV v2.0.0). Any
-worktree may write a spec's Linear state; the filesystem is the
-authority. On backward-drift (Linear ahead of disk) the bridge
-surfaces a warning and lets the operator decide — it does not refuse
-the write. Spec 003 (`003-drift-aware-authority`, FR-051..FR-064)
-implements this and SUPERSEDES the v1.0.0 FR-025 branch-gate. Until
-spec 003 lands, the shipped reconciler still applies the FR-025 gate
-(use `retroactive` to bypass it for first-time adoption). FR-026's
-surfacing obligation is retained throughout.
+**Authority**: drift-aware (Constitution Principle IV v2.0.0). ANY
+worktree may write a spec's Linear state regardless of its current git
+branch (FR-051) — the invoking worktree's filesystem is the write
+authority. The v1.0.0 FR-025 branch-gate is REMOVED. Before each write
+the reconciler computes a backward-drift signal (FR-052) from
+lifecycle-phase ordering and spec-dir git-commit recency; on
+backward-drift (Linear appears ahead of disk) it surfaces a structured
+WARNING row (FR-054) and lets the operator decide — interactively it
+prompts proceed/abort, non-interactively it proceeds-and-warns by
+default (override with `on-drift=abort`). It NEVER refuses the write of
+its own accord (warn, don't block). Forward / no-drift writes proceed
+silently. Spec 003 (`003-drift-aware-authority`, FR-051..FR-064)
+implements this. FR-026's current-state surfacing obligation is
+retained (FR-060): `speckit.linear.status` shows Linear's view from any
+worktree without writing. See the contracts:
+[drift-warning-surface](../specs/003-drift-aware-authority/contracts/drift-warning-surface.md),
+[recency-comparison](../specs/003-drift-aware-authority/contracts/recency-comparison.md),
+[drift-detection-graphql](../specs/003-drift-aware-authority/contracts/drift-detection-graphql.md).
 **Layer**: this command implements Layer D. The GitHub Action template
 that ships with `/spec-kit-linear-install` implements Layer E and is
 out of scope here.
@@ -57,7 +70,8 @@ the operator-facing end-to-end walkthrough see
 |---|---|---|
 | `spec` | (none — uses `--all`) | Feature number (e.g. `003`). Reconcile only this spec. |
 | `dry-run` | false | Log every mutation that WOULD fire; issue none. Safe inspection mode. |
-| `retroactive` | false | **DEPRECATED** (Constitution Principle IV v2.0.0 / spec 003 FR-061). First-time-adoption mode (FR-014 / User Story 5). In the shipped (pre-spec-003) reconciler it bypasses the FR-025 write-authority gate so every enumerated spec is reconciled regardless of the worktree's current branch — intended for the first reconcile after installing the bridge into a repo with existing specs. Implies `--all`; suppresses "skipped because non-authoritative" warnings and surfaces a single aggregate INFO row naming the bypass count. Once spec 003's drift-aware model lands, write-from-any-branch is the default and this flag becomes a no-op alias (it emits one deprecation INFO row and changes nothing); it is removed in a later release. |
+| `retroactive` | false | **DEPRECATED** no-op alias (Constitution Principle IV v2.0.0 / spec 003 FR-061). Write-from-any-branch is now the default (FR-051), so this flag changes nothing behaviorally; it emits exactly one deprecation INFO row per invocation and still implies `--all` (the historical first-time-adoption convenience). A documented v0.1.1 command that still carries `--retroactive` runs identically to omitting it. Removed in a later release. |
+| `on-drift` | (unset → proceed-and-warn) | `abort\|proceed` — non-interactive backward-drift disposition (FR-056). The default writes the disk state and records a WARNING row so CI logs stay auditable (hooks keep converging). `abort` skips drifted specs with a WARNING row + a skip note (`Linear unchanged`) instead of writing. Has no observable effect when no backward-drift fires. An unrecognised value is a usage error. |
 
 Exactly one of `spec` or "all specs" is in effect — if `spec` is not
 passed, the reconciler walks every `specs/NNN-*/` directory in the
@@ -109,15 +123,16 @@ Default: `--all`.
      missing/malformed UUIDs it halts with exit 2 and an
      operator-actionable diagnostic (Principle VIII).
    - Enumerates the requested specs and processes each:
-     - Applies write authority per Constitution Principle IV. Under
-       v2.0.0 (drift-aware, spec 003) any worktree may write; the
-       bridge computes a backward-drift signal and surfaces a warning
-       when Linear is ahead, but does not refuse the write. Until spec
-       003 lands, the shipped reconciler still gates writes on the
-       worktree's branch matching `<NNN>-…` (legacy FR-025), with
-       non-authoritative invocations taking a read-only display path;
-       `--retroactive` bypasses that legacy gate. Either way the
-       spec's current Linear state is surfaced (FR-026 / FR-060).
+     - Applies write authority per Constitution Principle IV v2.0.0
+       (drift-aware, spec 003): ANY worktree may write regardless of
+       its current branch (FR-051) — the legacy FR-025 branch-gate is
+       removed. The bridge computes a backward-drift signal and
+       surfaces a WARNING row when Linear is ahead, but does not refuse
+       the write (interactive prompt / non-interactive `on-drift`
+       resolution decide proceed vs abort; the default is
+       proceed-and-warn). Forward / no-drift writes proceed silently.
+       The spec's current Linear state is surfaced read-only regardless
+       (FR-026 / FR-060).
      - Infers the lifecycle phase from artifacts on disk
        (`spec.md` → `clarifying` → `planning` → `tasking` →
        `red_team` → `implementing` → `analyzing` → `ready_to_merge` →
@@ -233,15 +248,18 @@ logs:
 - `clarify-session DATE: existing comment body diverges from
   spec.md; not overwriting` — FR-015 + contracts §9. Hand-edits to
   comments are preserved; the reconciler does not silently overwrite.
-- `non-authoritative worktree (current branch '<branch>'); read-only
-  mode` — legacy FR-025 (shipped, pre-spec-003) behaviour from `main`
-  or an unrelated branch; the operator switches worktrees or passes
-  `retroactive=true` to bypass the gate (`retroactive: <N> spec(s)
-  reconciled despite non-authoritative worktree …`). Under Principle
-  IV v2.0.0 (drift-aware, spec 003) this is REPLACED by a
-  `backward-drift for spec NNN — Linear is ahead` WARNING row that
-  surfaces the drift but does not block the write; the operator
-  decides (interactive prompt, or `--on-drift` non-interactively).
+- `spec NNN backward-drift: disk=<phase>  linear=<phase>
+  signals=<csv>` — Principle IV v2.0.0 (drift-aware, spec 003) WARNING
+  row: Linear appears ahead of the invoking worktree's disk state. It
+  surfaces the drift but does NOT block the write; the operator decides
+  (interactive prompt, or `on-drift` non-interactively — default
+  proceed-and-warn). This REPLACES the removed v1.0.0
+  `non-authoritative worktree … read-only mode` skip. A recency-signal
+  drift appends a detail line naming the spec-dir last-commit time vs
+  Linear's `updatedAt`.
+- `spec NNN skipped by operator (backward-drift abort) — Linear
+  unchanged` — the operator (or `on-drift=abort`) chose to skip a
+  drifted spec; zero Linear mutation for that spec (FR-057).
 - `linear-config.yml not found at <path>; run
   /spec-kit-linear-install` — FR-022 halt. Exit code 2.
 

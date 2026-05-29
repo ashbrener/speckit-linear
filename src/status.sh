@@ -537,8 +537,12 @@ status::process_spec() {
         fi
     fi
 
-    # Authority status per FR-025. Yes if current branch matches the
-    # spec's feature-branch pattern; No otherwise.
+    # Authority hint (spec 003 / FR-060): a NON-GATING display heuristic.
+    # The FR-025 write-gate is removed (reconcile writes from any worktree
+    # — FR-051); this row is purely informational so `status` can still
+    # answer "is this the canonical feature-branch worktree?" without
+    # affecting any write. Yes if current branch matches the spec's
+    # feature-branch pattern; No otherwise.
     local authority="No"
     if git_helpers::is_authoritative_for_spec "$feature_number"; then
         authority="Yes"
