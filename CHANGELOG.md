@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing landed yet for v0.1.3. Add entries here as they merge._
+### v0.2.0 (pending release) — Drift-aware write-authority (spec 003)
+
+Redefines write-authority from the v1.0.0 branch-gate to a **drift-aware** model. Implements the v2.0.0 constitution's amended Principle IV ("Write-Authority Follows The Filesystem"). The release tag is gated on the downstream dogfood (`validation/dogfood-003.md`) + CI green.
+
+- **Write from any worktree (FR-051)** — the FR-025 branch-gate is removed. Any worktree may reconcile a spec to Linear; the branch name is a heuristic for "who has the latest", not a permission gate. Fixes the founding pain: a merged spec (feature branch deleted) can now be reconciled from `main` with zero flags.
+- **Backward-drift surfaced, never blocked (FR-052..FR-057, SC-017)** — before writing, the bridge compares disk vs Linear: if Linear's recorded lifecycle phase is further along than the disk-inferred phase, OR Linear's `updatedAt` is newer than the spec dir's last commit (±120s skew), it emits a WARNING — then proceeds. The operator decides; the bridge surfaces, it does not enforce (Principle VIII).
+- **`--on-drift=abort|proceed`** — non-interactive control over the drift disposition (default: proceed-and-warn). In an interactive TTY with no flag, the bridge prompts via `/dev/tty` (empty-enter = abort, default-safe).
+- **`--retroactive` deprecated (FR-061)** — now a no-op alias emitting one deprecation INFO row; write-from-any-branch is the default, so the v0.1.1 stopgap is no longer needed.
+- **Multi-worktree canonical pointer (FR-058)** — the memory block records the most-recent commit touching the spec dir, so the operator can see which worktree holds the freshest state.
+
+Governance dependency: the v2.0.0 constitution amendment (Principle IV) shipped in v0.1.2 as a doc-only change; spec 003 is its runtime implementation. Constitution re-check: 8 Conform / 0 Drift (`validation/constitution-recheck-003.md`).
 
 ## [0.1.2] — 2026-05-29
 
