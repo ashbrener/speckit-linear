@@ -119,48 +119,28 @@ ENV
     integration::stage_response 'default' '{"data":{}}'
 }
 
-@test "T038: reconcile from main-worktree never mutates Linear (FR-025/FR-026, SC-009)" {
-    # ---- precondition: we are on `main` in the primary worktree ----
-    local current_branch
-    current_branch="$(git -C "$SANDBOX_REPO" rev-parse --abbrev-ref HEAD)"
-    [ "$current_branch" = "main" ]
-
-    # ---- precondition: the feature branch IS checked out elsewhere ----
-    # (Per the helper, the secondary worktree at
-    # $SANDBOX_WORKTREE_001_SPEC_KIT_LINEAR_BRIDGE holds the branch.)
-    git -C "$SANDBOX_REPO" worktree list | grep -q '001-spec-kit-linear-bridge'
-
-    # ---- invoke reconcile from the non-authoritative worktree ----
-    run integration::run_reconcile --spec 001
-    [ "$status" -eq 0 ]
-
-    # ---- ZERO mutations ----
-    # SC-009: "No invocation of the bridge from a worktree that is
-    # not on a given spec's feature branch ever changes that spec's
-    # Linear state."
-    local mutations
-    mutations="$(integration::mutation_count)"
-    [ "$mutations" -eq 0 ]
-
-    # ---- queries ARE allowed ----
-    # FR-026: the bridge MUST still surface the spec's current Linear
-    # state from a non-authoritative worktree. That means at least
-    # one locate / display query MUST have fired.
-    local queries
-    queries="$(integration::query_count)"
-    [ "$queries" -ge 1 ]
-
-    # ---- summary surfaces the read-only mode ----
-    # FR-023 + FR-026: the summary MUST list the spec under a
-    # "Read-only" / "skipped" section so the operator understands
-    # why no mutations landed. The contract in command-shapes.md §1.5
-    # spells the section "Read-only specs:" — we accept either that
-    # exact label or the more generic "non-authoritative" / "skipped"
-    # phrasings so the test doesn't fight a cosmetic format choice.
-    [[ "$output" == *"speckit.linear summary"* ]]
-    [[ "$output" == *"Read-only"* ]] || \
-        [[ "$output" == *"read-only"* ]] || \
-        [[ "$output" == *"non-authoritative"* ]] || \
-        [[ "$output" == *"Skipped"* ]] || \
-        [[ "$output" == *"skipped"* ]]
+@test "T038/T347: reconcile from a non-feature worktree (SUPERSEDED by spec 003 / FR-051)" {
+    # SUPERSEDED — spec 003 (v2.0.0 Principle IV, drift-aware authority)
+    # removed the FR-025 write-authority branch-gate this test was
+    # written to verify. The premise — "reconcile from a non-feature
+    # worktree NEVER mutates Linear (SC-009)" — is no longer true:
+    # FR-051 lets ANY worktree write; backward-drift surfaces a WARNING
+    # but does NOT block (Principle VIII).
+    #
+    # Per T347 ("do NOT delete; repurpose"), this scenario is redirected
+    # rather than removed. The authoritative coverage for the new
+    # write-from-any-branch + drift-warn-not-block behavior lives in
+    # tests/integration/drift_e2e.bats (added in Phases 3-5):
+    #   - "write-from-main writes every spec with zero flags" (FR-051)
+    #   - "no drift → no backward-drift warning" (SC-017)
+    #   - the --on-drift / interactive-prompt disposition tests
+    # FR-026 read-only DISPLAY (status/pull from any worktree) is
+    # retained and covered by us3-status-staleness.bats.
+    #
+    # Recorded as Assumption A19 in specs/003-drift-aware-authority/tasks.md:
+    # a full behavioral inversion here would require re-staging the
+    # create-path mock; the behavior is already authoritatively tested
+    # in drift_e2e.bats, so this marker is skipped with a pointer
+    # instead of duplicating that coverage with a fragile mock.
+    skip "superseded by spec 003 FR-051 — see tests/integration/drift_e2e.bats (write-from-any-branch + drift disposition)"
 }

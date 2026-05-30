@@ -1,0 +1,17 @@
+{
+  "id": "issue-forward",
+  "identifier": "SPEC-312",
+  "title": "Spec 312 — Linear behind disk (forward write)",
+  "updatedAt": "2026-05-20T14:02:11+00:00",
+  "state": {
+    "id": "state-plan",
+    "name": "Planning",
+    "type": "started"
+  },
+  "labels": {
+    "nodes": [
+      { "name": "speckit-spec:312" },
+      { "name": "phase:planning" }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "issue-ahead-recency",
+  "identifier": "SPEC-311",
+  "title": "Spec 311 — Linear ahead by recency",
+  "updatedAt": "2026-05-26T09:35:00+00:00",
+  "state": {
+    "id": "state-plan",
+    "name": "Planning",
+    "type": "started"
+  },
+  "labels": {
+    "nodes": [
+      { "name": "speckit-spec:311" },
+      { "name": "phase:planning" }
+    ]
+  }
+}

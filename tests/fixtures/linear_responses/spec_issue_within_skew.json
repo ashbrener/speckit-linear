@@ -1,0 +1,17 @@
+{
+  "id": "issue-within-skew",
+  "identifier": "SPEC-313",
+  "title": "Spec 313 — Linear within clock-skew tolerance",
+  "updatedAt": "2026-05-26T09:31:30+00:00",
+  "state": {
+    "id": "state-impl",
+    "name": "In Progress",
+    "type": "started"
+  },
+  "labels": {
+    "nodes": [
+      { "name": "speckit-spec:313" },
+      { "name": "phase:implementing" }
+    ]
+  }
+}

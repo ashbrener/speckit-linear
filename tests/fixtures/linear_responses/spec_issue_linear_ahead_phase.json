@@ -1,0 +1,17 @@
+{
+  "id": "issue-ahead-phase",
+  "identifier": "SPEC-310",
+  "title": "Spec 310 — Linear ahead by phase",
+  "updatedAt": "2026-05-26T09:31:00+00:00",
+  "state": {
+    "id": "state-impl",
+    "name": "In Progress",
+    "type": "started"
+  },
+  "labels": {
+    "nodes": [
+      { "name": "speckit-spec:310" },
+      { "name": "phase:implementing" }
+    ]
+  }
+}

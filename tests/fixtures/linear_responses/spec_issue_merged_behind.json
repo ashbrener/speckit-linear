@@ -1,0 +1,17 @@
+{
+  "id": "issue-merged-behind",
+  "identifier": "SPEC-314",
+  "title": "Spec 314 — disk merged, Linear behind at implementing",
+  "updatedAt": "2026-05-26T09:00:00+00:00",
+  "state": {
+    "id": "state-impl",
+    "name": "In Progress",
+    "type": "started"
+  },
+  "labels": {
+    "nodes": [
+      { "name": "speckit-spec:314" },
+      { "name": "phase:implementing" }
+    ]
+  }
+}

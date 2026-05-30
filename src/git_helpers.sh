@@ -386,3 +386,165 @@ git_helpers::last_touched() {
     printf '%s\n' "$formatted"
   fi
 }
+
+# ---------------------------------------------------------------------------
+# git_helpers::iso_to_epoch <iso-8601>          (spec 003 — recency-comparison §2)
+#
+# Converts a strict ISO-8601 timestamp (e.g. the `%cI` committer date
+# `2026-05-20T14:02:11+00:00`, or a `Z`-suffixed UTC form) to a Unix epoch
+# integer on stdout. Mirrors the dual GNU/BSD `date` pattern that
+# git_helpers::last_touched already relies on, but in the parse direction:
+#
+#   * GNU coreutils: `date -d "<iso>" +%s` accepts ISO-8601 directly.
+#   * BSD/macOS:     `date -j -f "<fmt>" "<iso>" +%s` needs an explicit
+#                    input format. ISO-8601 admits two zone spellings —
+#                    a literal `Z` and a numeric `±HH:MM` offset — so we try
+#                    both BSD format strings. macOS `date` rejects the colon
+#                    in `%z`, so we normalise `+00:00` → `+0000` first.
+#
+# Empty stdout (exit 0) means the string could not be parsed — the caller
+# treats recency as `unavailable` and falls back to phase-ordering alone
+# (recency-comparison §2: "do not fabricate a comparison"). MUST NOT use
+# mtime; this is a pure string→epoch transform with no filesystem access.
+# ---------------------------------------------------------------------------
+git_helpers::iso_to_epoch() {
+  local iso="${1:-}"
+  if [[ -z "$iso" ]]; then
+    return 0
+  fi
+
+  local epoch=''
+  # GNU first: a single permissive parser handles every ISO-8601 spelling.
+  if epoch=$(date -d "$iso" +%s 2>/dev/null) && [[ -n "$epoch" ]]; then
+    printf '%s\n' "$epoch"
+    return 0
+  fi
+
+  # BSD/macOS fallback. macOS `strptime` cannot read the colon in a numeric
+  # zone offset, so collapse `+00:00` → `+0000` before handing it over.
+  local normalised="${iso/Z/+0000}"
+  # Strip the colon from a trailing ±HH:MM offset only (last 6 chars shape).
+  if [[ "$normalised" =~ ^(.*T[0-9:]+)([+-][0-9]{2}):([0-9]{2})$ ]]; then
+    normalised="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+  fi
+  if epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$normalised" +%s 2>/dev/null) \
+      && [[ -n "$epoch" ]]; then
+    printf '%s\n' "$epoch"
+    return 0
+  fi
+  # Last resort: a zone-less ISO form (no offset at all).
+  if epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${iso%Z}" +%s 2>/dev/null) \
+      && [[ -n "$epoch" ]]; then
+    printf '%s\n' "$epoch"
+    return 0
+  fi
+  # Unparseable — recency unavailable.
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# git_helpers::spec_dir_last_commit <spec_dir>   (spec 003 — recency-comparison §1)
+#
+# Echoes the ISO-8601 committer date (`%cI`, e.g.
+# `2026-05-20T14:02:11+00:00`) of the most recent commit that TOUCHED
+# <spec_dir>, or the empty string when no commit in this worktree's history
+# touches the directory (Edge Case 1 → recency signal `unavailable`).
+#
+# This is the recency comparator's disk key (FR-053). It MUST use the git
+# committer date — NEVER `stat`/mtime — because the committer date is
+# clone/checkout-stable and reflects when the change landed in THIS
+# worktree's history. The mtime-based git_helpers::last_touched (above) is
+# RETAINED only for the FR-004 memory-block human display and MUST NOT be
+# used as the recency comparator.
+#
+# Runs `git -C <worktree-or-cwd>` implicitly via the captured git binary so
+# the lookup works from any worktree; the pathspec `-- <spec_dir>` restricts
+# the log to commits affecting the spec directory.
+# ---------------------------------------------------------------------------
+git_helpers::spec_dir_last_commit() {
+  local spec_dir="${1:-}"
+  if [[ -z "$spec_dir" ]]; then
+    return 0
+  fi
+
+  local git_bin="${_GIT_HELPERS_GIT_BIN:-git}"
+  local iso=''
+  # `git log -1 --format=%cI -- <dir>` echoes a single ISO-8601 line, or
+  # nothing (exit 0) when no commit touches the pathspec. The `|| true`
+  # guards against a non-zero exit on a brand-new repo with no commits.
+  iso=$("$git_bin" log -1 --format=%cI -- "$spec_dir" 2>/dev/null || true)
+  if [[ -n "$iso" ]]; then
+    printf '%s\n' "$iso"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# git_helpers::worktrees_touching_spec <feature_number>
+#                                          (spec 003 — recency-comparison §4)
+#
+# Emits one line per worktree whose checkout contains a `specs/<NNN>-*/`
+# directory, in the form:
+#
+#     <commit_epoch>\t<worktree_path>\t<branch>
+#
+# where <commit_epoch> is the Unix-epoch conversion of that worktree's
+# spec-dir last-commit ISO date (§1), <worktree_path> is the absolute
+# worktree root, and <branch> is the checked-out branch (empty for detached
+# HEAD). Worktrees that do NOT contain the spec dir are omitted entirely.
+#
+# Ranking contract (FR-058 / FR-059): the canonical worktree is the line
+# with the MAXIMUM commit_epoch — the most recent spec-dir commit, NEVER the
+# branch name or filesystem mtime. Ties (identical epochs) resolve to the
+# invoking worktree as canonical; both tied worktrees still appear in the
+# emitted touching set. This function only enumerates + ranks; the caller
+# (reconcile::compute_drift / the WARNING emitter) selects the max.
+#
+# A worktree whose spec-dir commit is unavailable (dir present but no commit
+# touches it — uncommitted spec) is emitted with a `0` epoch so it sorts
+# below any real commit but still appears in the touching set.
+# ---------------------------------------------------------------------------
+git_helpers::worktrees_touching_spec() {
+  local feature_number="${1:-}"
+  if [[ -z "$feature_number" || ! "$feature_number" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+
+  local git_bin="${_GIT_HELPERS_GIT_BIN:-git}"
+  local invoking_root=''
+  invoking_root=$("$git_bin" rev-parse --show-toplevel 2>/dev/null || printf '')
+
+  local path branch
+  while IFS=$'\t' read -r path branch; do
+    [[ -n "$path" ]] || continue
+
+    # Find a specs/<NNN>-*/ dir inside this worktree. `compgen -G` globs
+    # without nullglob side effects; the first match is sufficient because a
+    # well-formed repo carries exactly one spec dir per feature number.
+    local matches match spec_dir=''
+    matches=$(compgen -G "${path%/}/specs/${feature_number}-*" 2>/dev/null || true)
+    if [[ -n "$matches" ]]; then
+      while IFS= read -r match; do
+        if [[ -d "$match" ]]; then
+          spec_dir="$match"
+          break
+        fi
+      done <<< "$matches"
+    fi
+    [[ -n "$spec_dir" ]] || continue
+
+    # The spec-dir last commit must be read from THIS worktree's history.
+    # `git -C <path> log` scopes the query to the worktree's own refs.
+    local iso epoch
+    iso=$("$git_bin" -C "$path" log -1 --format=%cI -- "$spec_dir" 2>/dev/null || true)
+    if [[ -n "$iso" ]]; then
+      epoch=$(git_helpers::iso_to_epoch "$iso")
+    fi
+    [[ -n "${epoch:-}" ]] || epoch=0
+
+    printf '%s\t%s\t%s\n' "$epoch" "$path" "$branch"
+  done < <(git_helpers::list_worktrees)
+
+  # Touch invoking_root so shellcheck does not flag it unused; it documents
+  # the tie-break rule (the caller resolves epoch ties to this path).
+  : "${invoking_root:-}"
+}

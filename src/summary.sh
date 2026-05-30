@@ -22,13 +22,16 @@
 #
 #   summary::add <type> <message>
 #       Record an event. <type> MUST be one of:
-#         created | updated | archived | warned | skipped | error
+#         created | updated | archived | warned | skipped | error | info
 #       Always increments the per-type counter. For warned / skipped / error
 #       the <message> is also appended to the warning/message buffer rendered
-#       in the `----- warnings -----` section of the emitted block. created /
-#       updated / archived messages are counter-only; their text is discarded
-#       to keep the summary block scannable (the structured count is the
-#       contract, not per-event lines).
+#       in the `----- warnings -----` section of the emitted block. For `info`
+#       (spec 003 / drift-warning-surface §7 — e.g. the --retroactive
+#       deprecation notice) the <message> is appended to a separate INFO
+#       buffer rendered as top-of-summary `INFO` lines, just under the title.
+#       created / updated / archived messages are counter-only; their text is
+#       discarded to keep the summary block scannable (the structured count is
+#       the contract, not per-event lines).
 #
 #   summary::emit
 #       Print the final structured block to stderr (per Principle VIII Rule 1
@@ -71,6 +74,11 @@ declare -gA _SUMMARY_COUNTS=()
 # Ordered list of warning/skipped/error messages, in insertion order. Rendered
 # under `----- warnings -----` by summary::emit.
 declare -ga _SUMMARY_WARNINGS=()
+
+# Ordered list of INFO messages (spec 003 / drift-warning-surface §7), in
+# insertion order. Rendered as top-of-summary `INFO  <message>` lines, just
+# under the optional title and above the counter rows.
+declare -ga _SUMMARY_INFOS=()
 
 # Optional header line printed at the top of the emitted block.
 declare -g _SUMMARY_TITLE=""
@@ -129,8 +137,10 @@ summary::start() {
         [warned]=0
         [skipped]=0
         [error]=0
+        [info]=0
     )
     _SUMMARY_WARNINGS=()
+    _SUMMARY_INFOS=()
     _SUMMARY_TITLE="${1:-}"
     _SUMMARY_INITIALISED="true"
 }
@@ -155,7 +165,7 @@ summary::add() {
     fi
 
     case "$type" in
-        created|updated|archived|warned|skipped|error)
+        created|updated|archived|warned|skipped|error|info)
             _SUMMARY_COUNTS[$type]=$(( ${_SUMMARY_COUNTS[$type]:-0} + 1 ))
             ;;
         *)
@@ -167,12 +177,16 @@ summary::add() {
             ;;
     esac
 
-    # Only warned / skipped / error events contribute to the warnings list.
+    # warned / skipped / error contribute to the warnings list; info
+    # contributes to the top-of-summary INFO list (drift-warning-surface §7).
     # Counter-only types (created/updated/archived) discard the message — the
     # summary block is meant to be a scannable digest, not a transcript.
     case "$type" in
         warned|skipped|error)
             _SUMMARY_WARNINGS+=("$message")
+            ;;
+        info)
+            _SUMMARY_INFOS+=("$message")
             ;;
     esac
 }
@@ -252,6 +266,15 @@ summary::emit() {
         printf '===== speckit.linear summary =====\n'
         if [[ -n "$_SUMMARY_TITLE" ]]; then
             printf '%s\n' "$_SUMMARY_TITLE"
+        fi
+        # Top-of-summary INFO lines (spec 003 / drift-warning-surface §7),
+        # rendered above the counter rows. INFO is not an error severity —
+        # legacy --retroactive use is informational, not a warning.
+        if (( ${#_SUMMARY_INFOS[@]} > 0 )); then
+            local info_msg
+            for info_msg in "${_SUMMARY_INFOS[@]}"; do
+                printf 'INFO  %s\n' "$info_msg"
+            done
         fi
         # Two counter rows. Spacing matches the spec sample so a grep on
         # "Created:" or "Errors:" finds exactly one line per reconcile.
