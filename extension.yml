@@ -250,7 +250,7 @@ provides:
 # these; they exist to make the community catalog searchable.
 # ---------------------------------------------------------------------------
 tags:
-  - "issue-tracker"
+  - "issue-tracking"
   - "linear"
   - "tasks-sync"
   - "lifecycle-mirror"
