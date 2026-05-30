@@ -63,11 +63,11 @@ When the disk phase cannot be inferred (malformed artifacts, Edge Case "phase ca
 
 ---
 
-### 3. The merge-detection gap (OSH-5: merged spec stuck "Implementing") — drift-aware analysis + recommendation
+### 3. The merge-detection gap (ACM-5: merged spec stuck "Implementing") — drift-aware analysis + recommendation
 
-**Decision**: The merge-detection gap is **adjacent to, but NOT inside, spec 003's scope.** Spec 003's FR-051 (write-from-any-branch) is *necessary but not sufficient* to fix OSH-5; the residual fix is a small, separate `git_helpers::pr_state` hardening tracked as its own FR-013 follow-up. This plan RECOMMENDS implementing that hardening as a companion change but NOT folding it into FR-051..FR-064.
+**Decision**: The merge-detection gap is **adjacent to, but NOT inside, spec 003's scope.** Spec 003's FR-051 (write-from-any-branch) is *necessary but not sufficient* to fix ACM-5; the residual fix is a small, separate `git_helpers::pr_state` hardening tracked as its own FR-013 follow-up. This plan RECOMMENDS implementing that hardening as a companion change but NOT folding it into FR-051..FR-064.
 
-**The gap, precisely** (from live dogfood, "OSH-5"): a spec whose PR merged and whose `NNN-feature` branch was deleted shows "Implementing" forever when reconciled from `main`. Root cause, traced in source:
+**The gap, precisely** (from live dogfood, "ACM-5"): a spec whose PR merged and whose `NNN-feature` branch was deleted shows "Implementing" forever when reconciled from `main`. Root cause, traced in source:
 
 1. `src/reconcile.sh:2479` derives `feature_branch="${feature_number}-${short_name}"` from the spec dir name.
 2. `src/reconcile.sh:2512` calls `git_helpers::pr_state "$feature_branch"` to get a merged/open hint that feeds `parser::lifecycle_phase`.
@@ -85,7 +85,7 @@ When the disk phase cannot be inferred (malformed artifacts, Edge Case "phase ca
 - Try `gh pr list --head <branch> --state merged --json mergedAt,url` (lists merged PRs by head even after branch deletion) before the single-PR `gh pr view`.
 - In the git-only fallback, when `refs/heads/<branch>` is absent, probe `refs/remotes/origin/<branch>` and, failing that, search the default-branch history for the squash-merge commit subject `(#<pr-number>)` or a merge commit referencing the branch — best-effort, surfaced as indeterminate (Principle VIII) when unresolvable rather than guessed.
 
-**Rationale for keeping it separate**: FR-013 (merge detection) is a spec-001 requirement; OSH-5 is a *defect in FR-013's implementation under deleted-branch conditions*, not a redesign of write authority. Folding `pr_state` hardening into FR-051..FR-064 would scope-creep the drift feature, conflate two test surfaces, and muddy the clean "spec 003 = the amended Principle IV" mapping the Constitution Check relies on. Tracking it as a dedicated `fix(reconcile): pr_state detects merged PRs for deleted feature branches` follow-up keeps both changes reviewable and independently testable. The dogfood evidence motivates BOTH, and the v0.2.0 release should ship both, but as two commits/PRs.
+**Rationale for keeping it separate**: FR-013 (merge detection) is a spec-001 requirement; ACM-5 is a *defect in FR-013's implementation under deleted-branch conditions*, not a redesign of write authority. Folding `pr_state` hardening into FR-051..FR-064 would scope-creep the drift feature, conflate two test surfaces, and muddy the clean "spec 003 = the amended Principle IV" mapping the Constitution Check relies on. Tracking it as a dedicated `fix(reconcile): pr_state detects merged PRs for deleted feature branches` follow-up keeps both changes reviewable and independently testable. The dogfood evidence motivates BOTH, and the v0.2.0 release should ship both, but as two commits/PRs.
 
 **Alternatives considered**:
 
