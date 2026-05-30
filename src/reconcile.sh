@@ -2789,12 +2789,26 @@ reconcile::_fetch_drift_issue_json() {
         --arg project "$project_uuid" \
         '{label: $label, project: $project}')"
 
-    # Best-effort: a bounced read degrades to "absent" (fired=0), never
-    # fails the reconcile — drift is a courtesy surface, not a gate.
+    # Distinguish "Linear says the Issue is absent" (rc 0, empty stdout —
+    # a real first-reconcile state) from "we could not read Linear at all"
+    # (rc 3 — transport failure, a GraphQL errors[] payload, or an
+    # unparseable body). The caller keeps the historical best-effort default
+    # (advisory → proceed) BUT fails closed under `--on-drift=abort`: when
+    # the operator has explicitly asked us to abort on drift, an unreadable
+    # Linear must NOT be silently treated as "no drift" and overwritten
+    # (#02 — fail closed when we cannot prove Linear isn't ahead).
     if ! response="$(graphql::query "$query" "$vars" 2>/dev/null)"; then
-        return 0
+        return 3
+    fi
+    if [[ -z "$response" ]] || ! printf '%s' "$response" | jq -e . >/dev/null 2>&1; then
+        return 3
+    fi
+    if printf '%s' "$response" | jq -e '.errors | type == "array" and length > 0' \
+        >/dev/null 2>&1; then
+        return 3
     fi
     # Freshest match wins (matches query_spec_issue's FR-004b ordering).
+    # Empty nodes → no output, rc 0 → genuinely absent (US2 first reconcile).
     printf '%s' "$response" \
         | jq -c '(.data.issues.nodes // []) | sort_by(.updatedAt) | reverse | (.[0] // empty)' \
             2>/dev/null || true
@@ -3106,8 +3120,23 @@ reconcile::process_spec() {
     # (FR-054) then resolve the disposition (data-model §5). On fired=0
     # (forward / equal / no-drift) the write proceeds SILENTLY — no
     # prompt, no warning (SC-017, the zero-false-positive path).
-    local drift_issue_json drift_verdict drift_fired drift_disp
-    drift_issue_json="$(reconcile::_fetch_drift_issue_json "$feature_number" 2>/dev/null || true)"
+    local drift_issue_json drift_verdict drift_fired drift_disp drift_fetch_rc
+    drift_issue_json="$(reconcile::_fetch_drift_issue_json "$feature_number" 2>/dev/null)"
+    drift_fetch_rc=$?
+    # rc 3 = Linear was unreadable (transport / GraphQL errors / malformed),
+    # which is NOT the same as "Issue absent". Drift stays advisory by
+    # default (fall through, treat as absent, proceed), but an explicit
+    # --on-drift=abort must fail closed: we cannot prove Linear isn't ahead,
+    # so refuse the write rather than risk clobbering it (#02).
+    if (( drift_fetch_rc != 0 )); then
+        if [[ "$ARG_ON_DRIFT" == "abort" ]]; then
+            summary::add skipped "spec ${feature_number} skipped: Linear unreadable and --on-drift=abort (fail-closed; Linear unchanged)"
+            reconcile::log "spec ${feature_number}: drift fetch unavailable (rc ${drift_fetch_rc}) and --on-drift=abort; skipping write (fail-closed, Linear unchanged)"
+            return 0
+        fi
+        reconcile::log "spec ${feature_number}: drift fetch unavailable (rc ${drift_fetch_rc}); drift advisory — proceeding (treated as absent)"
+        drift_issue_json=""
+    fi
     drift_verdict="$(reconcile::compute_drift \
         "$feature_number" "$spec_dir" "${drift_issue_json:-}" "$lifecycle_phase")"
     drift_fired="$(reconcile::_drift_verdict_field "$drift_verdict" fired)"
