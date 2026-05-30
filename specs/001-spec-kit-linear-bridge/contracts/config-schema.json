@@ -68,7 +68,7 @@
             },
             "key": {
               "type": "string",
-              "description": "Linear team key (e.g. 'OSH'). Informational; surfaced in Linear identifiers like OSH-123. Not used for lookup.",
+              "description": "Linear team key (e.g. 'ACM'). Informational; surfaced in Linear identifiers like ACM-123. Not used for lookup.",
               "minLength": 1
             },
             "name": {

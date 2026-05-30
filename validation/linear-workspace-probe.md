@@ -1,8 +1,8 @@
-# Linear Workspace Probe — OSH-INFRA
+# Linear Workspace Probe — ACME
 
 - **Probed**: 2026-05-27 (read-only)
-- **Workspace**: OSH-INFRA (urlKey `osh-infra`, org UUID `c4e7538f-0c5d-4b12-b49b-24fa49875fba`)
-- **Operator (viewer)**: `ash@starlogik.com` (UUID `9f411c68-640a-4f80-a803-c8716caff3f0`)
+- **Workspace**: ACME (urlKey `acme`, org UUID `c4e7538f-0c5d-4b12-b49b-24fa49875fba`)
+- **Operator (viewer)**: `operator@example.com` (UUID `33333333-3333-4333-8333-333333333333`)
 - **API key valid**: yes (token from `.env` authenticated successfully against `viewer`, `organization`, `teams`, `team(states/labels)`, `projects`)
 - **Logo**: none set
 - **Mutations performed**: zero — every call was a `query`
@@ -11,11 +11,11 @@
 
 | Team UUID | Key | Name | Members | Description |
 |---|---|---|---|---|
-| `6ab43461-6d22-4f02-bb1e-0be9859c7997` | `OSH` | OSH-INFRA | 1 (operator only) | null |
+| `11111111-1111-4111-8111-111111111111` | `ACM` | ACME | 1 (operator only) | null |
 
-The workspace contains exactly one team — `OSH-INFRA` (issue-identifier prefix `OSH-`). It is the de-facto INFRA team for this operator.
+The workspace contains exactly one team — `ACME` (issue-identifier prefix `ACM-`). It is the de-facto INFRA team for this operator.
 
-## Workflow states on team `OSH-INFRA`
+## Workflow states on team `ACME`
 
 | Position | Name | Type | Color | Description |
 |---|---|---|---|---|
@@ -32,7 +32,7 @@ This is the stock Linear default state set. **None** of the nine spec-kit lifecy
 
 All nine required states (`Specifying` backlog, `Clarifying`/`Planning`/`Tasking` unstarted, `Red-team`/`Implementing`/`Analyzing`/`Ready-to-merge` started, `Merged` completed) are missing. The existing `In Progress` (`started`) and `Done` (`completed`) types overlap semantically but name-mismatch the bridge's phase labels, so the seed should **create all nine** rather than rename. Leave `Backlog`/`Todo`/`In Progress`/`Done`/`Canceled`/`Duplicate` intact for non-speckit Issues — Linear permits >6 states per team.
 
-## Labels on team `OSH-INFRA`
+## Labels on team `ACME`
 
 | UUID | Name | Color | Parent |
 |---|---|---|---|
@@ -50,7 +50,7 @@ Implication: there is no pre-existing `spec-kit-linear`, `wingman`, or `a backen
 
 ## Concrete recommendations
 
-1. **`team_id` for the dogfood `.specify/extensions/linear/config.yml`**: `6ab43461-6d22-4f02-bb1e-0be9859c7997` (key `OSH`, name `OSH-INFRA`). There is no choice — this is the only team. The bridge can resolve by either UUID or `teamKey: OSH`; UUID is more stable.
+1. **`team_id` for the dogfood `.specify/extensions/linear/config.yml`**: `11111111-1111-4111-8111-111111111111` (key `ACM`, name `ACME`). There is no choice — this is the only team. The bridge can resolve by either UUID or `teamKey: ACM`; UUID is more stable.
 
 2. **Workflow states to create in seed (FR-021)** — all nine:
    `Specifying` (backlog), `Clarifying` (unstarted), `Planning` (unstarted), `Tasking` (unstarted), `Red-team` (started), `Implementing` (started), `Analyzing` (started), `Ready-to-merge` (started), `Merged` (completed). Leave existing Backlog/Todo/In Progress/Done/Canceled/Duplicate untouched.

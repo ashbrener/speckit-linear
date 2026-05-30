@@ -103,7 +103,7 @@ ENV
     # current state to surface in read-only mode (FR-026). If reconcile
     # honours the write-authority gate, ZERO mutations follow.
     integration::stage_response 'query-LocateSpecIssue' \
-        "{\"data\":{\"issues\":{\"nodes\":[{\"id\":\"${SPEC_ISSUE_ID}\",\"updatedAt\":\"2026-05-28T00:00:00Z\",\"identifier\":\"OSH-1\",\"title\":\"001-spec-kit-linear-bridge\",\"state\":{\"id\":\"cccccccc-0001-4ccc-cccc-cccccccccccc\",\"name\":\"Specifying\"}}]}}}"
+        "{\"data\":{\"issues\":{\"nodes\":[{\"id\":\"${SPEC_ISSUE_ID}\",\"updatedAt\":\"2026-05-28T00:00:00Z\",\"identifier\":\"ACM-1\",\"title\":\"001-spec-kit-linear-bridge\",\"state\":{\"id\":\"cccccccc-0001-4ccc-cccc-cccccccccccc\",\"name\":\"Specifying\"}}]}}}"
 
     integration::stage_response 'query-LocateTaskPhase' \
         '{"data":{"issues":{"nodes":[]}}}'
@@ -114,7 +114,7 @@ ENV
     # If a mutation DOES fire (test failure mode), the response is
     # still parseable so reconcile doesn't crash before we assert.
     integration::stage_response 'mutation' \
-        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"OSH-1\"}}}}"
+        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"ACM-1\"}}}}"
 
     integration::stage_response 'default' '{"data":{}}'
 }

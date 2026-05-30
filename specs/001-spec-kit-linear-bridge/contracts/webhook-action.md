@@ -460,4 +460,4 @@ Any one of these failing is grounds for blocking the PR.
   probe and `validation/linear-mcp-runtime-probe.md` §A — label
   filters resolve server-side regardless of form). T077 dogfood
   verifies the flat form returns exactly one node against
-  `OSH-INFRA`'s `speckit-spec:001` label.
+  `ACME`'s `speckit-spec:001` label.

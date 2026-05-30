@@ -183,7 +183,7 @@ and which gain new optional surface.
 **Acceptance test surface**:
 `tests/integration/install_e2e_backwards_compat.bats` (NEW in spec
 002) exercises rows 1-4 of the table above against the live
-`OSH-INFRA` test workspace with `RUN_INTEGRATION_TESTS=1`. SC-011
+`ACME` test workspace with `RUN_INTEGRATION_TESTS=1`. SC-011
 gates v0.1.1 release on these tests passing.
 
 ---

@@ -149,7 +149,7 @@ the same formatting with the literal text `Create new project`.
   conventions operators already know. Spec.md FR-039 shows the
   literal format `1) ACM — Acme` — spec 002's emission code
   matches this byte-for-byte (the `printf '%-8s' "$key"` width is
-  the max team-key length observed in OSH-INFRA;
+  the max team-key length observed in ACME;
   v0.2.0 may raise it to terminal-aware).
 - All prompt output goes to stderr so stdout stays clean for any
   caller that pipes install output. Matches v0.1.0's stderr

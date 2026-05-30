@@ -12,18 +12,18 @@ session is being compacted. Read this top-to-bottom before resuming.
 - **CI**: green on every dispatched run; workflow only fires via `workflow_dispatch` because `pull_request: synchronize` was broken until `.github/workflows/ci.yml` landed on `main` (commit `8864515`). After every push, run `gh workflow run ci.yml --ref 001-spec-kit-linear-bridge --repo ashbrener/spec-kit-linear` to fire CI manually.
 - **HTTPS push pattern**: SSH key not registered on GitHub for this account; every push uses `git -c credential.helper='!gh auth git-credential' push https://github.com/ashbrener/spec-kit-linear.git 001-spec-kit-linear-bridge`. `gh` token has `gist, read:org, repo, workflow` scopes (`workflow` was added mid-session).
 
-## Linear state (OSH-INFRA workspace)
+## Linear state (ACME workspace)
 
-- **Workspace**: `OSH-INFRA` (`urlKey=osh-infra`)
-- **Team UUID**: `6ab43461-6d22-4f02-bb1e-0be9859c7997` (team key `OSH`)
-- **Project**: `spec-kit-linear` UUID `dc2e7503-4b65-42ac-bed8-d2aa2d817f60`. Manually created via `projectCreate` curl call during dogfood because install.sh's `--auto-create` was deferred at the time (now fixed in `f39bc0d`).
-- **Project URL**: `https://linear.app/osh-infra/project/spec-kit-linear-97bca3d5ede3`
+- **Workspace**: `ACME` (`urlKey=acme`)
+- **Team UUID**: `11111111-1111-4111-8111-111111111111` (team key `ACM`)
+- **Project**: `spec-kit-linear` UUID `22222222-2222-4222-8222-222222222222`. Manually created via `projectCreate` curl call during dogfood because install.sh's `--auto-create` was deferred at the time (now fixed in `f39bc0d`).
+- **Project URL**: `https://linear.app/acme/project/spec-kit-linear-97bca3d5ede3`
 - **Project Status**: `In Progress` (type `started`) — flipped by reconcile.sh's FR-002 logic
-- **Spec Issue (parent)**: OSH-5 = `001-spec-kit-linear-bridge`. URL: `https://linear.app/osh-infra/issue/OSH-5/001-spec-kit-linear-bridge`
-- **Task-phase sub-issues**: OSH-6..OSH-13 (Phase 1..Phase 8). Workflow states correctly inferred from each Phase's checklist completion ratio. Labels `task-phase:N` applied.
-- **Operator identity** (FR-034 captured at install): `ash@starlogik.com`, user_id `9f411c68-640a-4f80-a803-c8716caff3f0`. Assignee on every issueCreate.
+- **Spec Issue (parent)**: ACM-5 = `001-spec-kit-linear-bridge`. URL: `https://linear.app/acme/issue/ACM-5/001-spec-kit-linear-bridge`
+- **Task-phase sub-issues**: ACM-6..ACM-13 (Phase 1..Phase 8). Workflow states correctly inferred from each Phase's checklist completion ratio. Labels `task-phase:N` applied.
+- **Operator identity** (FR-034 captured at install): `operator@example.com`, user_id `33333333-3333-4333-8333-333333333333`. Assignee on every issueCreate.
 - **Workflow states seeded** (9): Specifying / Clarifying / Planning / Tasking / Red-team / Implementing / Analyzing / Ready-to-merge / Merged.
-- **Labels seeded** (workspace scope): `phase:*` × 9, `task-phase:N` × 9, plus `speckit-spec:001` auto-stamped on OSH-5.
+- **Labels seeded** (workspace scope): `phase:*` × 9, `task-phase:N` × 9, plus `speckit-spec:001` auto-stamped on ACM-5.
 
 ## Recent commit history (chronological)
 
@@ -35,7 +35,7 @@ session is being compacted. Read this top-to-bottom before resuming.
 | `c7d1091` | merge: bring main's infra commit into feature branch (resolved PR #1 conflict) |
 | `8864515` | (on `main`) chore(main): land OSS-hygiene infrastructure from feature branch — ci.yml, .markdownlint-cli2.jsonc, LICENSE, CONTRIBUTING, CHANGELOG. Unblocked CI triggering. |
 | `429ec7d` | feat(spec-001): FR-034 operator-assignee binding + dogfood pre-stage + README data-model split |
-| `66994e7` | chore(t077): dogfood success — spec 001 mirrored to OSH-INFRA |
+| `66994e7` | chore(t077): dogfood success — spec 001 mirrored to ACME |
 | `f39bc0d` | fix(spec-001): 6 dogfood follow-ups — table memory block, diagrams section, Project Status flip, install.sh awk + projectCreate, dogfood verify |
 | `1e6ef19` | feat(spec-001): Fix 7 — human-readable Overview section in spec Issue description |
 | `1e32f29` | fix(reconcile): replace 4 awk -v block=multi-line with bash state machines |
@@ -51,7 +51,7 @@ session is being compacted. Read this top-to-bottom before resuming.
 
 User picked **Plan B (canonical rebuild)** for refactoring `src/reconcile.sh::compose_issue_description`. Goal:
 
-The current implementation has THREE per-fence splices (memory, overview, diagrams) each with REPLACE-or-PREPEND/INSERT logic. The order they execute determines where new blocks land when the body is in an "unexpected" state. We hit this during dogfood: OSH-5 ended up with order `memory → overview → diagrams` instead of the canonical `overview → memory → diagrams`.
+The current implementation has THREE per-fence splices (memory, overview, diagrams) each with REPLACE-or-PREPEND/INSERT logic. The order they execute determines where new blocks land when the body is in an "unexpected" state. We hit this during dogfood: ACM-5 ended up with order `memory → overview → diagrams` instead of the canonical `overview → memory → diagrams`.
 
 **Refactor target**: `reconcile::compose_issue_description` (in `src/reconcile.sh`, around lines 785-921 at handoff time).
 
@@ -86,8 +86,8 @@ The current implementation has THREE per-fence splices (memory, overview, diagra
 3. Commit + push (HTTPS-via-gh pattern above)
 4. `gh workflow run ci.yml --ref 001-spec-kit-linear-bridge --repo ashbrener/spec-kit-linear` to dispatch CI
 5. Wait for CI green
-6. Re-run `bash scripts/dogfood.sh --skip-install --skip-seed` to reconcile OSH-5 with the new canonical order
-7. Verify OSH-5 description order with the GraphQL query in §"Verification command" below
+6. Re-run `bash scripts/dogfood.sh --skip-install --skip-seed` to reconcile ACM-5 with the new canonical order
+7. Verify ACM-5 description order with the GraphQL query in §"Verification command" below
 
 ## Verification command (paste verbatim after refactor)
 
@@ -132,4 +132,4 @@ If the order is wrong, the refactor regressed something.
 
 Paste this verbatim after compacting the session — it will pick up exactly where we left off:
 
-> Resuming spec-kit-linear work. Read `validation/handoff-2026-05-28-canonical-rebuild.md` for full context first. Then execute Plan B: refactor `src/reconcile.sh::compose_issue_description` to use canonical-rebuild semantics per §"The Plan B work to execute next" of the handoff. After the refactor: shellcheck + bash -n locally → commit + push (HTTPS-via-gh pattern) → dispatch CI → re-run `bash scripts/dogfood.sh --skip-install --skip-seed` → verify OSH-5 description order with the GraphQL command in the handoff. If OSH-5 shows `overview → memory → diagrams` in that order, Plan B is done. Surface the result and ask what to fire next from §"Pending follow-ups".
+> Resuming spec-kit-linear work. Read `validation/handoff-2026-05-28-canonical-rebuild.md` for full context first. Then execute Plan B: refactor `src/reconcile.sh::compose_issue_description` to use canonical-rebuild semantics per §"The Plan B work to execute next" of the handoff. After the refactor: shellcheck + bash -n locally → commit + push (HTTPS-via-gh pattern) → dispatch CI → re-run `bash scripts/dogfood.sh --skip-install --skip-seed` → verify ACM-5 description order with the GraphQL command in the handoff. If ACM-5 shows `overview → memory → diagrams` in that order, Plan B is done. Surface the result and ask what to fire next from §"Pending follow-ups".

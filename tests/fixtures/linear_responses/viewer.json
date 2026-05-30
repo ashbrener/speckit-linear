@@ -5,8 +5,8 @@
       "name": "Ash Brener",
       "email": "ash@example.com",
       "organization": {
-        "name": "OSH Infra",
-        "urlKey": "osh-infra"
+        "name": "ACME Infra",
+        "urlKey": "acme"
       }
     }
   }

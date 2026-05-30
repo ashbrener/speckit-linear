@@ -149,8 +149,8 @@ implementation). Single-project layout.
 - Spec dimension: ~50 active specs total across all repos.
 - Task dimension: 5-90 tasks per spec, ~5 task phases per spec on
   average.
-- Linear dimension: 1 workspace (`OSH-INFRA` per the live probe), 1
-  team (`OSH`), N projects (one per consumer repo), many spec Issues
+- Linear dimension: 1 workspace (`ACME` per the live probe), 1
+  team (`ACM`), N projects (one per consumer repo), many spec Issues
   + task-phase sub-issues.
 
 ## Constitution Check

@@ -142,8 +142,8 @@ Default: `--all --human`.
 
      ```text
      NNN  NAME            DISK PHASE  DISK TASKS  AUTH  LINEAR ID  LINEAR STATE         DRIFT
-     001  multi-phase     tasking     0/3         Yes   OSH-12     Tasking (tasking)    —
-     002  multi-phase     tasking     0/3         No    OSH-14     Implementing (impl…) lifecycle phase: disk=tasking linear=implementing
+     001  multi-phase     tasking     0/3         Yes   ACM-12     Tasking (tasking)    —
+     002  multi-phase     tasking     0/3         No    ACM-14     Implementing (impl…) lifecycle phase: disk=tasking linear=implementing
      ```
 
      `AUTH` cell is green (Yes) / yellow (No). `DRIFT` cell is green
@@ -168,7 +168,7 @@ Default: `--all --human`.
          "linear": {
            "present": true,
            "fetch_failed": false,
-           "identifier": "OSH-12",
+           "identifier": "ACM-12",
            "title": "002-multi-phase",
            "state_name": "Tasking",
            "state_type": "started",

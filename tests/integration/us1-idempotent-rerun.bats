@@ -85,7 +85,7 @@ setup() {
     # to return a parseable payload so the reconciler doesn't error
     # out before the assertion runs.
     integration::stage_response 'mutation' \
-        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"OSH-2\",\"title\":\"002-multi-phase\"}}}}"
+        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${SPEC_ISSUE_ID}\",\"identifier\":\"ACM-2\",\"title\":\"002-multi-phase\"}}}}"
 
     integration::stage_response 'default' '{"data":{}}'
 }

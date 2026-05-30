@@ -107,7 +107,7 @@ TASKS
     # sub-issue. We echo the same UUID back so the reconciler keeps
     # tracking it.
     integration::stage_response 'mutation' \
-        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${PHASE2_SUB_ID}\",\"identifier\":\"OSH-4\",\"title\":\"Phase 2 — Foundational\"}}}}"
+        "{\"data\":{\"issueUpdate\":{\"success\":true,\"issue\":{\"id\":\"${PHASE2_SUB_ID}\",\"identifier\":\"ACM-4\",\"title\":\"Phase 2 — Foundational\"}}}}"
 
     integration::stage_response 'default' '{"data":{}}'
 }

@@ -1314,11 +1314,11 @@ install::_write_workspace_block() {
 
     if [[ -n "${INSTALL_SESSION_VIEWER_ORG_NAME:-}" ]]; then
         install::_substitute_yaml_string_field "$file" "workspace" "name" \
-            "$INSTALL_SESSION_VIEWER_ORG_NAME" "OSH-INFRA"
+            "$INSTALL_SESSION_VIEWER_ORG_NAME" "ACME"
     fi
     if [[ -n "${INSTALL_SESSION_VIEWER_ORG_URL_KEY:-}" ]]; then
         install::_substitute_yaml_string_field "$file" "workspace" "url_key" \
-            "$INSTALL_SESSION_VIEWER_ORG_URL_KEY" "osh-infra"
+            "$INSTALL_SESSION_VIEWER_ORG_URL_KEY" "acme"
     fi
 }
 
@@ -1335,11 +1335,11 @@ install::_write_team_block() {
 
     if [[ -n "${INSTALL_SESSION_SELECTED_TEAM_KEY:-}" ]]; then
         install::_substitute_yaml_string_field "$file" "team" "key" \
-            "$INSTALL_SESSION_SELECTED_TEAM_KEY" "OSH"
+            "$INSTALL_SESSION_SELECTED_TEAM_KEY" "ACM"
     fi
     if [[ -n "${INSTALL_SESSION_SELECTED_TEAM_NAME:-}" ]]; then
         install::_substitute_yaml_string_field "$file" "team" "name" \
-            "$INSTALL_SESSION_SELECTED_TEAM_NAME" "OSH-INFRA"
+            "$INSTALL_SESSION_SELECTED_TEAM_NAME" "ACME"
     fi
 }
 

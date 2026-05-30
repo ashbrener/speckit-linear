@@ -6,7 +6,7 @@
 #
 # Companion to:
 #   * tests/integration/install_e2e_backwards_compat.bats — live
-#     OSH-INFRA regression suite for install-flags.md §5 rows 1–4 + 8
+#     ACME regression suite for install-flags.md §5 rows 1–4 + 8
 #     (T241..T244, gated on RUN_INTEGRATION_TESTS=1).
 #   * tests/unit/install_discovery.bats — Phase 3 US1 discovery flow
 #     tests + helper-signature scaffolds.
@@ -158,7 +158,7 @@ _graphql_call_count() {
             printf '%s' '{\"data\":{\"team\":null,\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"proj\",\"url\":\"https://linear.app/x/project/proj\",\"teams\":{\"nodes\":[{\"id\":\"deadbeef-dead-beef-dead-beefdeadbeef\"}]}}}}'
         }
         install::quick_validate_binding \
-            '6ab43461-6d22-4f02-bb1e-0be9859c7997' \
+            '11111111-1111-4111-8111-111111111111' \
             '97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080'
     "
     [ "$status" -eq 2 ]
@@ -172,10 +172,10 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() {
-            printf '%s' '{\"data\":{\"team\":{\"id\":\"6ab43461-6d22-4f02-bb1e-0be9859c7997\",\"name\":\"OSH Infra\",\"key\":\"OSH\"},\"project\":null}}'
+            printf '%s' '{\"data\":{\"team\":{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"ACME Infra\",\"key\":\"ACM\"},\"project\":null}}'
         }
         install::quick_validate_binding \
-            '6ab43461-6d22-4f02-bb1e-0be9859c7997' \
+            '11111111-1111-4111-8111-111111111111' \
             '97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080'
     "
     [ "$status" -eq 2 ]
@@ -190,10 +190,10 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() {
-            printf '%s' '{\"data\":{\"team\":{\"id\":\"6ab43461-6d22-4f02-bb1e-0be9859c7997\",\"name\":\"OSH Infra\",\"key\":\"OSH\"},\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"orphan-project\",\"url\":\"https://linear.app/x/project/orphan\",\"teams\":{\"nodes\":[{\"id\":\"deadbeef-dead-beef-dead-beefdeadbeef\"}]}}}}'
+            printf '%s' '{\"data\":{\"team\":{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"ACME Infra\",\"key\":\"ACM\"},\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"orphan-project\",\"url\":\"https://linear.app/x/project/orphan\",\"teams\":{\"nodes\":[{\"id\":\"deadbeef-dead-beef-dead-beefdeadbeef\"}]}}}}'
         }
         install::quick_validate_binding \
-            '6ab43461-6d22-4f02-bb1e-0be9859c7997' \
+            '11111111-1111-4111-8111-111111111111' \
             '97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080'
     "
     [ "$status" -eq 2 ]
@@ -208,15 +208,15 @@ _graphql_call_count() {
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
         graphql::query() {
-            printf '%s' '{\"data\":{\"team\":{\"id\":\"6ab43461-6d22-4f02-bb1e-0be9859c7997\",\"name\":\"OSH Infra\",\"key\":\"OSH\"},\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/osh-infra/project/spec-kit-linear\",\"teams\":{\"nodes\":[{\"id\":\"6ab43461-6d22-4f02-bb1e-0be9859c7997\"}]}}}}'
+            printf '%s' '{\"data\":{\"team\":{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"ACME Infra\",\"key\":\"ACM\"},\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/acme/project/spec-kit-linear\",\"teams\":{\"nodes\":[{\"id\":\"11111111-1111-4111-8111-111111111111\"}]}}}}'
         }
         install::quick_validate_binding \
-            '6ab43461-6d22-4f02-bb1e-0be9859c7997' \
+            '11111111-1111-4111-8111-111111111111' \
             '97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080'
         printf 'TEAM=%s PROJ=%s\n' \"\$INSTALL_SESSION_SELECTED_TEAM_ID\" \"\$INSTALL_SESSION_SELECTED_PROJECT_ID\"
     "
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TEAM=6ab43461-6d22-4f02-bb1e-0be9859c7997"* ]]
+    [[ "$output" == *"TEAM=11111111-1111-4111-8111-111111111111"* ]]
     [[ "$output" == *"PROJ=97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080"* ]]
 }
 
@@ -230,11 +230,11 @@ _graphql_call_count() {
     # SELECTED_TEAM_ID directly from the flag. Call-count == 0.
     _source_install_sh
     _install_graphql_stub
-    INSTALL_FLAG_TEAM="6ab43461-6d22-4f02-bb1e-0be9859c7997"
+    INSTALL_FLAG_TEAM="11111111-1111-4111-8111-111111111111"
     INSTALL_FLAG_PROJECT=""
     INSTALL_FLAG_AUTO_CREATE=0
     install::discover_teams
-    [ "$INSTALL_SESSION_SELECTED_TEAM_ID" = "6ab43461-6d22-4f02-bb1e-0be9859c7997" ]
+    [ "$INSTALL_SESSION_SELECTED_TEAM_ID" = "11111111-1111-4111-8111-111111111111" ]
     [ "$(_graphql_call_count)" = "0" ]
 }
 
@@ -246,7 +246,7 @@ _graphql_call_count() {
     run bash -c "
         cd '${TEST_TMP}'
         source '${PROJECT_ROOT}/src/install.sh'
-        INSTALL_FLAG_TEAM='6ab43461-6d22-4f02-bb1e-0be9859c7997'
+        INSTALL_FLAG_TEAM='11111111-1111-4111-8111-111111111111'
         INSTALL_FLAG_PROJECT=''
         INSTALL_FLAG_AUTO_CREATE=0
         graphql::query() { cat '${INSTALL_TEST_FIXTURE_DIR}/projects_multi.json'; }
@@ -257,7 +257,7 @@ _graphql_call_count() {
     "
     [ "$status" -eq 0 ]
     [[ "$output" == *"CHOICE=attach"* ]]
-    [[ "$output" == *"TEAM=6ab43461-6d22-4f02-bb1e-0be9859c7997"* ]]
+    [[ "$output" == *"TEAM=11111111-1111-4111-8111-111111111111"* ]]
 }
 
 # =============================================================================
@@ -280,13 +280,13 @@ _graphql_call_count() {
             # team(id:'') returns null (empty string is not a valid
             # team UUID); project leg carries the owning team in
             # .teams.nodes[0].
-            printf '%s' '{\"data\":{\"team\":null,\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/osh-infra/project/spec-kit-linear\",\"teams\":{\"nodes\":[{\"id\":\"6ab43461-6d22-4f02-bb1e-0be9859c7997\",\"name\":\"OSH Infra\",\"key\":\"OSH\"}]}}}}'
+            printf '%s' '{\"data\":{\"team\":null,\"project\":{\"id\":\"97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080\",\"name\":\"spec-kit-linear\",\"url\":\"https://linear.app/acme/project/spec-kit-linear\",\"teams\":{\"nodes\":[{\"id\":\"11111111-1111-4111-8111-111111111111\",\"name\":\"ACME Infra\",\"key\":\"ACM\"}]}}}}'
         }
         install::quick_validate_binding '' '97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080'
         printf 'TEAM=%s PROJ=%s\n' \"\$INSTALL_SESSION_SELECTED_TEAM_ID\" \"\$INSTALL_SESSION_SELECTED_PROJECT_ID\"
     "
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TEAM=6ab43461-6d22-4f02-bb1e-0be9859c7997"* ]]
+    [[ "$output" == *"TEAM=11111111-1111-4111-8111-111111111111"* ]]
     [[ "$output" == *"PROJ=97bca3d5-ede3-4e7f-9c1a-2d4b5e6f7080"* ]]
 }
 

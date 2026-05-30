@@ -139,7 +139,7 @@ resolve_with_env() {
 # ---------------------------------------------------------------------------
 # FR-013 / FR-030 — PR-state → lifecycle hint derivation.
 #
-# Regression coverage for the v0.1.1 dogfood bug (OSH-5: spec 001 stuck on
+# Regression coverage for the v0.1.1 dogfood bug (ACM-5: spec 001 stuck on
 # "Implementing" despite PR #1 merged). git_helpers::pr_state hands the
 # reconciler the REAL gh JSON fields (state/mergedAt) — there is no
 # `merged` boolean — and reconcile::pr_state_hint must derive `merged`

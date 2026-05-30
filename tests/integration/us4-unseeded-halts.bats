@@ -49,12 +49,12 @@ config_version: 1
 
 linear:
   workspace:
-    name: "OSH-INFRA"
-    url_key: "osh-infra"
+    name: "ACME"
+    url_key: "acme"
   team:
     id: "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
-    key: "OSH"
-    name: "OSH-INFRA"
+    key: "ACM"
+    name: "ACME"
   project:
     id: "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"
     name: "spec-kit-linear-test"

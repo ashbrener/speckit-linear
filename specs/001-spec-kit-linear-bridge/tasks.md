@@ -177,7 +177,7 @@
 - [ ] T074 [P] Update `CHANGELOG.md` with a `[0.1.0] - 2026-MM-DD` entry summarising the v1 shipping surface (5 commands, 6 after_* hooks auto-registered, 3 git hooks, Layer E Action template, workspace seed)
 - [ ] T075 [P] Add `.markdownlint-cli2.jsonc` IF NOT ALREADY ADDED in T002 (defensive — T002 may have been deferred)
 - [x] T076 [P] [5] Performance harness: run `time` against the full reconcile of a synthetic 10-spec / 30-task-per-spec repo; record actual hot vs cold reconcile latency in `validation/performance-baseline.md`; flag regressions vs `plan.md` Performance Goals. Fail CI when cold reconcile of the fixture exceeds 30s or hot reconcile exceeds 5s (matches plan.md Performance Goals); record both timings in `validation/performance-baseline.md`. ✓ 2026-05-28 — landed in commit `454ed65` as `tests/perf/` (run.sh + fixtures + baselines.json + README). N=10 cold 0.992s vs ≤30s SC-007 (30x headroom); hot 0.840s vs ≤5s SC-008 (6x headroom).
-- [x] T077 [P] [3] Dogfood — install bridge into this repo itself (`specify extension add --dev /Users/ashbrener/Code/AI/spec-kit-linear`), seed the OSH-INFRA workspace, retroactively sync spec 001 (this spec). Verify the Linear UI matches expectations end-to-end. Record any rough edges in `validation/dogfood-001.md` ✓ 2026-05-28 — landed in commit `66994e7` + 6 follow-up fixes in `f39bc0d`. OSH-5..OSH-13 in canonical state; FR-034 assignee + FR-035 estimates 46/6/40 verified live.
+- [x] T077 [P] [3] Dogfood — install bridge into this repo itself (`specify extension add --dev /Users/ashbrener/Code/AI/spec-kit-linear`), seed the ACME workspace, retroactively sync spec 001 (this spec). Verify the Linear UI matches expectations end-to-end. Record any rough edges in `validation/dogfood-001.md` ✓ 2026-05-28 — landed in commit `66994e7` + 6 follow-up fixes in `f39bc0d`. ACM-5..ACM-13 in canonical state; FR-034 assignee + FR-035 estimates 46/6/40 verified live.
 - [ ] T078 [P] [1] Documentation pass — review `commands/*.md` for operator-facing clarity; cross-link to `quickstart.md` and the constitution; check vocabulary consistency (`task phase`, `Phase N — <Name>`, no `wave`)
 - [ ] T079 [P] [2] Verify all `tests/unit/*.bats` and `tests/integration/*.bats` pass; aim for ≥80% coverage of `src/*.sh`; add bats coverage report to CI workflow
 - [x] T080 [P] [3] Add `bats` matrix to `.github/workflows/ci.yml` triggers — confirm CI runs the integration suite when `RUN_INTEGRATION_TESTS=1` is set (probably via `workflow_dispatch` + repo variable; per agent's earlier flag) ✓ 2026-05-28 — landed in commit `ee9e02e`. Expanded matrix to ubuntu + macOS × bash 4.4 + 5.2 (full 2×2). Source-builds bash 4.4 from GNU tarball since Homebrew has no `bash@4` formula. Closes the BSD-awk gap that allowed two multiline bugs (`1e32f29`, `2979d96`) to dogfood-time.
@@ -244,7 +244,7 @@ T073, T074, T075, T076, T078, T079, T080, T081, T084 are independent and can lan
 
 Stories 3, 4, 5 may be parallelised across contributors after MVP — they don't depend on each other.
 
-**Dogfood gate**: T077 is the moment of truth. Until the bridge has successfully retroactively-synced its own spec 001 into the OSH-INFRA workspace and the operator has driven a subsequent spec entirely through the auto-fire chain, v0.1.0 should NOT tag.
+**Dogfood gate**: T077 is the moment of truth. Until the bridge has successfully retroactively-synced its own spec 001 into the ACME workspace and the operator has driven a subsequent spec entirely through the auto-fire chain, v0.1.0 should NOT tag.
 
 ## Format Validation
 

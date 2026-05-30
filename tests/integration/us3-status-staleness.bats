@@ -70,7 +70,7 @@ stage_spec_issue_response() {
 {"data":{"issues":{"nodes":[
   {
     "id":"${SPEC_ISSUE_ID}",
-    "identifier":"OSH-12",
+    "identifier":"ACM-12",
     "title":"002-multi-phase",
     "updatedAt":"2026-05-28T00:00:00.000Z",
     "description":"<!-- spec-kit-linear:memory:begin -->\n| **Branch** | \`002-multi-phase\` |\n<!-- spec-kit-linear:memory:end -->",

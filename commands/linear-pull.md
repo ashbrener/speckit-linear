@@ -136,13 +136,13 @@ Default: `--repo --all-phases --human`.
      ```text
      ▼ spec-kit-linear
      ID      NNN  PHASE         STATE         EST  ASSIGNEE  LAST ACTIVITY         TITLE
-     OSH-13  005  implementing  Implementing  46   ash       2026-05-28T11:50:00Z  005-some-spec
-     OSH-12  002  tasking       Tasking        6   ash       2026-05-27T09:21:00Z  002-multi-phase
-     OSH-5   001  merged        Done          40   ash       2026-05-25T16:00:00Z  001-spec-kit-linear-bridge
+     ACM-13  005  implementing  Implementing  46   ash       2026-05-28T11:50:00Z  005-some-spec
+     ACM-12  002  tasking       Tasking        6   ash       2026-05-27T09:21:00Z  002-multi-phase
+     ACM-5   001  merged        Done          40   ash       2026-05-25T16:00:00Z  001-spec-kit-linear-bridge
 
      ▼ another-repo
      ID      NNN  PHASE     STATE     EST  ASSIGNEE  LAST ACTIVITY         TITLE
-     OSH-22  003  planning  Planning   8   ash       2026-05-28T08:00:00Z  003-feature-x
+     ACM-22  003  planning  Planning   8   ash       2026-05-28T08:00:00Z  003-feature-x
      ```
 
      `PHASE` cell is yellow for early phases, blue for mid-lifecycle,
@@ -154,7 +154,7 @@ Default: `--repo --all-phases --human`.
      ```json
      [
        {
-         "identifier": "OSH-13",
+         "identifier": "ACM-13",
          "feature_number": "005",
          "title": "005-some-spec",
          "project_id": "...",
@@ -167,7 +167,7 @@ Default: `--repo --all-phases --human`.
          "last_activity": "2026-05-28T11:50:00Z",
          "assignee_name": "ash",
          "estimate": 46,
-         "url": "https://linear.app/osh-infra/issue/OSH-13"
+         "url": "https://linear.app/acme/issue/ACM-13"
        }
      ]
      ```

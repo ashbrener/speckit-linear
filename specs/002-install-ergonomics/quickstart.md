@@ -156,7 +156,7 @@ result as a numbered list:
 
 ```text
 [linear] Teams accessible to this API key:
-  1) OSH      — OSH
+  1) ACM      — ACM
   2) ENG      — Engineering
   3) DESIGN   — Design Studio
 Pick a team [1-3]:
@@ -168,7 +168,7 @@ visible key + name; the UUID lookup happens internally.
 **Single-team workspaces auto-pick** — no prompt fires:
 
 ```text
-[linear] Found 1 team accessible — using OSH (OSH Infra) (auto-picked).
+[linear] Found 1 team accessible — using ACM (ACME Infra) (auto-picked).
          Override with --team <UUID> on next install.
 ```
 
@@ -181,7 +181,7 @@ After the team is selected, the install issues
 `team(id).projects(first: 21)` (FR-040) and presents:
 
 ```text
-[linear] Projects in OSH:
+[linear] Projects in ACM:
   1) spec-kit-linear
   2) acme-backend
   3) Create new project
@@ -195,8 +195,8 @@ a name (FR-041, default = repo basename):
 
 ```text
 [linear] New Linear Project name [my-consumer-repo]:
-[linear] Create new Linear Project "my-consumer-repo" in OSH? [Y/n] (default: Y):
-[linear] Created Linear Project: https://linear.app/osh-infra/project/my-consumer-repo-abc123
+[linear] Create new Linear Project "my-consumer-repo" in ACM? [Y/n] (default: Y):
+[linear] Created Linear Project: https://linear.app/acme/project/my-consumer-repo-abc123
          Project ID is recorded internally and written to
          .specify/extensions/linear/linear-config.yml.
 ```
@@ -209,7 +209,7 @@ in Linear's UI).
 already exists in the team, you'll see:
 
 ```text
-[linear] A project named "my-consumer-repo" already exists in OSH.
+[linear] A project named "my-consumer-repo" already exists in ACM.
          [create-anyway/pick-existing/rename] (default: pick-existing):
 ```
 
@@ -234,12 +234,12 @@ sub-steps 4-5 and aren't repeated here.
 ```text
 spec-kit-linear: install: complete
 ===== speckit.linear install summary =====
-  Workspace          OSH Infra (osh-infra)
-  Team               OSH — OSH
+  Workspace          ACME Infra (acme)
+  Team               ACM — ACM
   Project            my-consumer-repo
   Operator           Ash Brener <ash@example.com>
   Key sourced from   dotenv (no write needed)
-  Open in Linear     https://linear.app/osh-infra/project/my-consumer-repo-abc123
+  Open in Linear     https://linear.app/acme/project/my-consumer-repo-abc123
   Hooks registered   6 after_* + 3 git hooks (FR-031, FR-033)
   GitHub Action      installed (LINEAR_API_TOKEN secret required — see below)
 

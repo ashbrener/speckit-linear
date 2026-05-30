@@ -224,7 +224,7 @@ GraphQL.
 - *PR-title parsing or magic-words (Linear GitHub App style)* —
   FR-017 forbids the bridge from creating/updating PRs; identity
   would scatter across surfaces.
-- *Linear's auto-assigned issue ID (`OSH-123`)* — only assigned
+- *Linear's auto-assigned issue ID (`ACM-123`)* — only assigned
   post-create; the bridge needs a key computable before creation to
   make `save_issue` idempotent via deterministic `id`.
 
@@ -284,7 +284,7 @@ workflow-state creation is **not** in the live MCP; GraphQL is the
 only path. `linear-mcp-tool-signatures.md` §2 documented the
 mutation shape, including the team-scoped requirement.
 `validation/linear-workspace-probe.md` confirmed the dogfood team
-`OSH-INFRA` ships none of the nine required states, so create-all-
+`ACME` ships none of the nine required states, so create-all-
 nine (rather than rename-existing) is the only viable path. Capturing
 UUIDs at creation is mandatory per FR-032 + Principle V Rule 2 ("no
 post-seed name-fallback is allowed").

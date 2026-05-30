@@ -37,4 +37,4 @@
 - Implementation-adjacent terms used in spec (GraphQL queries `viewer`, `teams`, `projects`, `projectCreate`) are operator-facing data shapes the operator interacts with through the install ceremony, not implementation details. Same precedent as v0.1.0's FR-004b (`speckit-spec:NNN` label format) and FR-032 (`workflow_state_uuids` map).
 - Backwards-compatibility (FR-044, SC-011) explicitly preserved — existing v0.1.0 `--team`/`--project` flag installs continue to work without change.
 - Self-install safety (FR-046) added as a new safety guard motivated by the first dogfood; out of scope for the API redesign but bundled because it's part of the same operator-facing install footgun cleanup.
-- Bootstrapping meta-dogfood note at the bottom of spec.md acknowledges that this spec is being authored under the v0.1.0 bridge against OSH-INFRA itself.
+- Bootstrapping meta-dogfood note at the bottom of spec.md acknowledges that this spec is being authored under the v0.1.0 bridge against ACME itself.

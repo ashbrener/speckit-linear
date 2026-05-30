@@ -109,7 +109,7 @@ readonly RECONCILE_OVERVIEW_MAX_CHARS=1500
 # description body is fully owned and rewritten by the bridge on every
 # reconcile, in canonical order: overview → memory → diagrams. There
 # are no fence markers — Linear renders HTML comments and `<details>`
-# tags as visible text nodes (probed empirically on OSH-14), so any
+# tags as visible text nodes (probed empirically on ACM-14), so any
 # fence shape would leak as literal markup in Linear's UI. Operator
 # annotations belong in Linear comments (FR-008), which the bridge
 # never touches.
@@ -954,7 +954,7 @@ EOF
 # annotations belong in Linear comments (FR-008), which the bridge
 # never touches. There are no fence markers — Linear renders HTML
 # comments and `<details>` tags as visible text nodes (probed
-# empirically on OSH-14), so any fence shape would leak as literal
+# empirically on ACM-14), so any fence shape would leak as literal
 # markup. The unidirectional, bridge-owned policy makes the per-fence
 # splice machinery unnecessary.
 #
@@ -3017,7 +3017,7 @@ reconcile::_drift_disposition() {
 #   query. The original code both requested that field AND read `.merged`
 #   from the response, so the gh path always failed → merged specs (e.g.
 #   spec 001 reconciled from `main`) were mis-detected as still
-#   `implementing` (the OSH-5 dogfood bug). Reading the real fields fixes
+#   `implementing` (the ACM-5 dogfood bug). Reading the real fields fixes
 #   detection from ANY branch.
 #
 #   An OPEN, non-draft PR maps to `ready` (→ ready_to_merge per FR-028),

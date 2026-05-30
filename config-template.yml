@@ -27,12 +27,12 @@ config_version: 1          # bump if operator hand-edits
 # Linear binding — resolved at install time (FR-002).
 linear:
   workspace:
-    name: "OSH-INFRA"             # informational (display only)
-    url_key: "osh-infra"          # informational (workspace URL slug)
+    name: "ACME"             # informational (display only)
+    url_key: "acme"          # informational (workspace URL slug)
   team:
     id: "00000000-0000-0000-0000-000000000000"   # Required (FR-002) — UUID is authoritative
-    key: "OSH"                    # informational; not used for lookup
-    name: "OSH-INFRA"             # informational
+    key: "ACM"                    # informational; not used for lookup
+    name: "ACME"             # informational
   project:
     id: "00000000-0000-0000-0000-000000000000"   # Required (FR-002) — UUID is authoritative
     name: "spec-kit-linear"        # informational (display only)

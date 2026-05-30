@@ -6,7 +6,7 @@
 #
 # Gating: `RUN_INTEGRATION_TESTS=1` AND a valid `LINEAR_API_KEY` (with
 # both `LINEAR_TEST_TEAM_UUID` and `LINEAR_TEST_PROJECT_UUID` pointing
-# at a non-destructive sandbox project in the live OSH-INFRA test
+# at a non-destructive sandbox project in the live ACME test
 # workspace). Without these, every `@test` block early-skips so CI
 # matrix rows without secrets stay GREEN.
 #
