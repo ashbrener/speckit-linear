@@ -295,11 +295,16 @@ proceed overwrites Linear from `main`'s disk view.
   before writing, from two inputs: (a) **lifecycle-phase ordering** —
   whether Linear's recorded lifecycle phase for the spec is strictly
   further along than the phase the bridge infers from the invoking
-  worktree's disk state; and (b) **recency** — whether the most recent
-  commit touching `specs/NNN-feature/` (via `git log -1 --
-  specs/NNN-feature/`) predates Linear's `updatedAt` on the spec Issue by
-  more than a clock-skew tolerance. Backward-drift is signalled when (a)
-  OR (b) holds.
+  worktree's disk state (the PRIMARY signal); and (b) **recency** —
+  whether the most recent commit touching `specs/NNN-feature/` (via
+  `git log -1 -- specs/NNN-feature/`) predates Linear's `updatedAt` on the
+  spec Issue by more than a clock-skew tolerance. Recency is a
+  CORROBORATING signal only: backward-drift is signalled when (a) holds,
+  and (b) may reinforce it but MUST NOT raise drift on its own.
+  Rationale: the bridge owns the Issue body, so its own writes (and any
+  third-party text edit) advance `updatedAt` without advancing the phase;
+  treating recency as a standalone trigger would make every no-op re-run
+  report spurious drift and violate idempotency (SC-017).
 - **FR-053**: Reconcile MUST NOT use raw filesystem mtime as the recency
   signal. Recency MUST derive from the git commit timestamp of the spec
   directory (a filesystem-evident key per Principle II), because mtime
