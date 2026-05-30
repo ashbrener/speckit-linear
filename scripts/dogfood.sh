@@ -17,7 +17,10 @@
 #   - specs/001-spec-kit-linear-bridge/spec.md User Story 4 + User Story 5,
 #     FR-018b (preflight), FR-021 (seed idempotency), FR-022 (halt-on-unseeded)
 #   - specs/001-spec-kit-linear-bridge/quickstart.md Steps 1-5
-#   - validation/linear-workspace-probe.md (default ACM team UUID)
+#
+# The target Linear Team UUID is REQUIRED (no built-in default): supply it
+# via --team <uuid>, or via SPECKIT_LINEAR_TEAM_ID / LINEAR_TEAM_ID in the
+# operator-local .env.
 #
 # Exit codes:
 #   0  Success — install + seed + reconcile + verification all green.
@@ -35,9 +38,12 @@ set -euo pipefail
 # Constants & defaults
 # -----------------------------------------------------------------------------
 
-# Default team UUID — ACME per validation/linear-workspace-probe.md.
-# Override with --team for other workspaces. Team key 'ACM', urlKey 'acme'.
-readonly DEFAULT_TEAM_UUID="11111111-1111-4111-8111-111111111111"
+# Team UUID is REQUIRED — there is no usable built-in default. Supply it
+# via --team <uuid>, or via SPECKIT_LINEAR_TEAM_ID / LINEAR_TEAM_ID in the
+# operator-local .env (sourced by load_env_file). The all-ones value shown
+# in --help (11111111-1111-4111-8111-111111111111) is an INERT placeholder
+# used in examples only — it is never the live default and would not
+# resolve against any real workspace.
 readonly DEFAULT_REPORT_PATH="validation/dogfood-001.md"
 readonly LINEAR_GRAPHQL_ENDPOINT="https://api.linear.app/graphql"
 
@@ -53,7 +59,9 @@ readonly -a REQUIRED_BINARIES=(curl jq git gh)
 # Mutable globals (populated by parse_args / preflight / run_*).
 # -----------------------------------------------------------------------------
 
-TEAM_UUID="$DEFAULT_TEAM_UUID"
+# Empty until resolved from --team or the environment (see resolve_team_uuid).
+# An empty value here is intentional: there is NO broken-but-plausible default.
+TEAM_UUID=""
 REPORT_PATH="$DEFAULT_REPORT_PATH"
 DRY_RUN=0
 SKIP_INSTALL=0
@@ -115,9 +123,11 @@ ceremony, the workspace seed, and a reconcile of spec 001, and captures
 the full transcript plus a Linear verification pass to a Markdown report.
 
 OPTIONS
-  --team UUID       Linear Team UUID to target. Default: ACME
-                    (11111111-1111-4111-8111-111111111111 per
-                    validation/linear-workspace-probe.md).
+  --team UUID       Linear Team UUID to target. REQUIRED — there is no
+                    built-in default. Either pass --team, or set
+                    SPECKIT_LINEAR_TEAM_ID (or LINEAR_TEAM_ID) in your
+                    operator-local .env. Example (placeholder, not a real
+                    team): --team 11111111-1111-4111-8111-111111111111
   --dry-run         Propagate --dry-run to src/seed.sh and src/reconcile.sh
                     so no Linear mutations fire. NOTE: src/install.sh does
                     NOT support --dry-run today; it is skipped under
@@ -322,6 +332,31 @@ load_env_file() {
             export "${key}=${val}"
         fi
     done < "$env_file"
+}
+
+# -----------------------------------------------------------------------------
+# resolve_team_uuid
+#   Determine the Linear Team UUID to target. Precedence:
+#     1. --team <uuid> on the CLI (already parsed into TEAM_UUID).
+#     2. SPECKIT_LINEAR_TEAM_ID in the environment (e.g. from .env).
+#     3. LINEAR_TEAM_ID in the environment (e.g. from .env).
+#   If none resolve, die with exit 2 (user error) and a copy-paste hint.
+#   There is deliberately NO fallback default: a non-existent placeholder
+#   team would only POST to Linear and fail confusingly.
+#   Must run AFTER load_env_file so .env-sourced vars are visible.
+# -----------------------------------------------------------------------------
+resolve_team_uuid() {
+    if [[ -z "$TEAM_UUID" ]]; then
+        TEAM_UUID="${SPECKIT_LINEAR_TEAM_ID:-${LINEAR_TEAM_ID:-}}"
+    fi
+    if [[ -z "$TEAM_UUID" ]]; then
+        printf 'dogfood: ERROR: no Linear Team UUID supplied.\n' >&2
+        printf '  Pass --team <uuid>, or set SPECKIT_LINEAR_TEAM_ID (or\n' >&2
+        printf '  LINEAR_TEAM_ID) in your operator-local .env. There is no\n' >&2
+        printf '  built-in default — see scripts/dogfood.sh --help.\n' >&2
+        usage >&2
+        exit 2
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -1201,6 +1236,7 @@ main() {
     parse_args "$@"
     resolve_repo_root
     load_env_file
+    resolve_team_uuid
 
     TOTAL_START_TS="$(date +%s)"
 
