@@ -2698,9 +2698,34 @@ reconcile::compute_drift() {
     fi
 
     # --- Recency signal ---------------------------------------------------
+    # Recency is a CORROBORATING signal, never a standalone trigger (#01).
+    #
+    # The disk key is the spec dir's last GIT COMMIT time; the Linear key is
+    # the Issue's `updatedAt`. The bridge's OWN write bumps `updatedAt` to
+    # "now", which is later than the last commit — so on every unchanged
+    # re-run `linear_epoch - disk_epoch` exceeds the skew and a naive recency
+    # check would fire spuriously, ratcheting `updatedAt` forward and firing
+    # forever. That breaks idempotency (SC-017): a no-op reconcile MUST
+    # surface no drift.
+    #
+    # The fix: recency may only fire ALONGSIDE a phase-ordering drift. If the
+    # disk and Linear phases agree (the unchanged-spec case), nothing fires.
+    # This also matches the unidirectional contract — the bridge owns the
+    # Issue body, so a third-party text edit (which moves `updatedAt` but not
+    # the phase) SHOULD be silently overwritten; only workflow-STATE
+    # advancement, which the phase signal already catches, is worth warning
+    # about. Recency then adds confidence/detail to a phase drift, it does
+    # not manufacture one.
+    #
+    # `skew` (seconds) is operator-tunable but must be a non-negative integer;
+    # a malformed value (#08) would crash the `(( ))` under `set -e`, so fall
+    # back to the 120s default rather than abort the reconcile.
     local recency_drift=0
     local skew="${RECONCILE_DRIFT_SKEW_TOLERANCE_SECONDS:-120}"
-    if [[ -n "$disk_epoch" && -n "$linear_epoch" ]]; then
+    if [[ ! "$skew" =~ ^[0-9]+$ ]]; then
+        skew=120
+    fi
+    if (( phase_drift == 1 )) && [[ -n "$disk_epoch" && -n "$linear_epoch" ]]; then
         if (( linear_epoch - disk_epoch > skew )); then
             recency_drift=1
         fi
