@@ -320,3 +320,63 @@ _commit_spec_at() {
   [[ "$output" == *"/repo"$'\t'"main"* ]]
   [[ "$output" == *"repo-feature-007"*$'\t'"007-baz"* ]]
 }
+
+@test "worktrees_touching_spec: epoch tie → LINKED invoking worktree wins over porcelain-first main (T336c, finding #07)" {
+  # Finding #07: the test above invokes from the MAIN worktree, which `git
+  # worktree list --porcelain` already lists FIRST. So "emitted first" there is
+  # satisfied by porcelain order alone and cannot distinguish the documented
+  # invoking-worktree tie-break (git_helpers.sh §worktrees_touching_spec, which
+  # resolves invoking_root via `rev-parse --show-toplevel` from the CWD and
+  # buffers that row ahead of the porcelain order) from "main happens to be
+  # first". This test removes that confound: it invokes from the LINKED
+  # worktree, which is NOT porcelain-first, so the only way it can appear first
+  # is the reorder logic actually firing.
+  _commit_spec_at "specs/008-tie" "2026-05-22T12:00:00+00:00"
+  git -C "$REPO" worktree add --quiet -b 008-tie "$BATS_TEST_TMPDIR/repo-feature-008" main
+  # Linked worktree shares main's identical spec-dir commit (no new commit) →
+  # exact epoch tie. main is the spec's authoring worktree; the linked tree
+  # merely checks the same commit out, so neither has a strictly-greater epoch.
+
+  # Resolve BOTH worktree roots to the realpaths git itself reports in
+  # porcelain output. On macOS $BATS_TEST_TMPDIR lives under /var → /private/var,
+  # and `git worktree add` records the resolved /private/var form, so the literal
+  # "$BATS_TEST_TMPDIR/repo-feature-008" is not always cd-able. Reading the path
+  # back from `git worktree list --porcelain` gives a canonical, cd-able value.
+  local main_wt linked_wt
+  main_wt="$(git -C "$REPO" worktree list --porcelain \
+    | awk '/^worktree / && /repo$/{print $2; exit}')"
+  linked_wt="$(git -C "$REPO" worktree list --porcelain \
+    | awk '/^worktree / && /repo-feature-008$/{print $2; exit}')"
+  [ -n "$main_wt" ]
+  [ -n "$linked_wt" ]
+  [ -d "$linked_wt" ]
+
+  # Precondition: confirm porcelain order lists MAIN first, NOT the linked
+  # worktree — otherwise this test would prove nothing (same blind spot as the
+  # original). The linked worktree winning despite this is the real signal.
+  local porcelain_first
+  porcelain_first="$(git -C "$REPO" worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
+  [ "$porcelain_first" = "$main_wt" ]
+  [ "$porcelain_first" != "$linked_wt" ]
+
+  # Invoke FROM the linked worktree: invoking_root resolves to the linked tree,
+  # so the tie-break must surface IT first despite porcelain order.
+  run bash -c "cd '$linked_wt' && source '$GIT_HELPERS_SH' && git_helpers::worktrees_touching_spec 008"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+
+  # Both lines carry the same epoch (the tie we constructed).
+  local e0 e1
+  e0="$(printf '%s' "${lines[0]}" | cut -f1)"
+  e1="$(printf '%s' "${lines[1]}" | cut -f1)"
+  [ "$e0" = "$e1" ]
+
+  # THE load-bearing assertion: the invoking (LINKED) worktree is emitted
+  # FIRST — line 0 is the 008-tie feature path, NOT main. Under porcelain
+  # order main would be first; only the invoking-root reorder puts the linked
+  # tree ahead. This is what the original main-invoked test could not prove.
+  [[ "${lines[0]}" == *"repo-feature-008"*$'\t'"008-tie" ]]
+  [[ "${lines[0]}" != *$'\t'"main" ]]
+  # ...and main still appears in the touching set (both worktrees present).
+  [[ "$output" == *"/repo"$'\t'"main"* ]]
+}

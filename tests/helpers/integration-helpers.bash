@@ -486,6 +486,17 @@ EOF
 #   (state/isDraft/mergedAt/url) so reconcile::pr_state_hint resolves `merged`
 #   (FR-013/SC-014). `gh auth status` succeeds so pr_state takes the gh path
 #   rather than the git-only reachability fallback.
+#
+#   Finding #03: the previous body emitted the MERGED array for EVERY `gh pr`
+#   invocation, ignoring the rest of argv — so it could not distinguish
+#   reconcile's real merged-PR probe (`gh pr list --head <branch> --state all
+#   --json state,isDraft,mergedAt,url`) from any other gh pr call, and a buggy
+#   probe that dropped `--head` would still have been fed a merged PR. This
+#   version only emits MERGED when argv contains `pr` AND `list` AND a `--head`
+#   flag; every other gh invocation (including a `pr` call without those tokens)
+#   falls through to the no-PR/empty array case, identical to the `*)` no-op.
+#   This is additive and backward-compatible — reconcile's probe always passes
+#   all three tokens, so the merged-from-main e2e test (T320) is unaffected.
 integration::install_gh_shim_merged() {
     cat > "${MOCK_BIN}/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -495,10 +506,23 @@ case "$1" in
         exit 0
         ;;
     pr)
-        # `gh pr list --head <branch> --state all --json state,isDraft,mergedAt,url`
-        # → a single MERGED PR. git_helpers::pr_state extracts .[0]; the rich
-        # object's state=MERGED makes reconcile::pr_state_hint emit `merged`.
-        printf '%s\n' '[{"state":"MERGED","isDraft":false,"mergedAt":"2026-05-20T00:00:00Z","url":"https://github.com/acme/repo/pull/4"}]'
+        # Only a well-formed `gh pr list --head <branch> ...` query (reconcile's
+        # merged-PR probe) gets the single MERGED PR; any other `gh pr ...` call
+        # gets an empty array so the stub can't paper over a probe that forgot
+        # --head. git_helpers::pr_state extracts .[0]; state=MERGED makes
+        # reconcile::pr_state_hint emit `merged`.
+        have_list=0 have_head=0
+        for arg in "$@"; do
+            case "$arg" in
+                list) have_list=1 ;;
+                --head) have_head=1 ;;
+            esac
+        done
+        if [ "$have_list" = 1 ] && [ "$have_head" = 1 ]; then
+            printf '%s\n' '[{"state":"MERGED","isDraft":false,"mergedAt":"2026-05-20T00:00:00Z","url":"https://github.com/acme/repo/pull/4"}]'
+        else
+            printf '%s\n' '[]'
+        fi
         exit 0
         ;;
     *)

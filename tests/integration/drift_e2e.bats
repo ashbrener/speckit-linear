@@ -289,20 +289,42 @@ drift_e2e::_stage_drift_absent() {
 
     # Second reconcile: the stored Issue matches the computed desired state, so
     # the diff is empty and NO issueUpdate fires (SC-022 / FR-063).
-    drift_e2e::_stage_drift_absent
+    #
+    # Finding #01: previously this re-run staged the drift fetch as ABSENT
+    # (_stage_drift_absent), which makes compute_drift return fired=0 trivially —
+    # so the test would have stayed green even under the OLD standalone-recency
+    # bug. To genuinely pin the #01 fix (recency CORROBORATES phase drift, never
+    # fires alone), we instead stage an EXISTING drift Issue at the SAME phase as
+    # disk but with updatedAt FAR newer than the spec-dir commit — the exact
+    # shape the old bug mis-fired on. 001-minimal infers `specifying`; we stage
+    # Linear at `specifying` too (equal phase ⇒ phase_drift=0) with a 2099
+    # updatedAt (the bridge's own prior write would have bumped updatedAt far
+    # past the spec-dir commit). Equal phase + much-newer updatedAt MUST yield
+    # fired=0: no phase drift to corroborate ⇒ recency stays silent. If the bug
+    # regressed, recency would fire alone here → a backward-drift WARNING and a
+    # drift-skip, both asserted against below.
+    drift_e2e::_stage_drift_issue '001' 'specifying' '2099-01-01T00:00:00+00:00'
     run integration::run_reconcile --spec 001
     [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 
-    # ZERO new mutations on the unchanged-spec re-run.
+    # ZERO new mutations on the unchanged-spec re-run — the spec is NOT
+    # drift-skipped despite the far-newer Linear updatedAt (equal phase ⇒
+    # fired=0). Under the old recency-only bug the spec would have been skipped
+    # by the drift gate, also yielding zero mutations, so the no-warning
+    # assertion below is what actually distinguishes the fixed behaviour.
     local spec001_second total_second
     spec001_second="$(drift_e2e::count_mutations_containing 'speckit-spec:001')"
     [ "$spec001_second" -eq 0 ]
     total_second="$(drift_e2e::count_total_mutations)"
     [ "$total_second" -eq 0 ]
 
-    # And no spurious drift warning on the no-op re-run (recency alone never
-    # fires — the #01 fix).
+    # THE #01 regression pin: equal phase + far-newer updatedAt must fire
+    # NOTHING, so NO backward-drift warning surfaces. The old standalone-recency
+    # bug fired here; this assertion now fails loudly if it ever returns.
     [[ "$output" != *"backward-drift"* ]]
+    # And no spec was skipped by the drift disposition (the write path was
+    # reached and found nothing to change — a true no-op, not a drift skip).
+    [[ "$output" != *"skipped by operator"* ]]
 }
 
 # T322 — US1 disk-ahead forward write (SC-017 + Acceptance Scenario 3)
