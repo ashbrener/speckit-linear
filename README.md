@@ -1,8 +1,8 @@
 # Linear — a Spec Kit extension
 
-**Mirror every spec on disk into a Linear Issue, so you can see — and steer — every active spec across every repo from a single pane.** The filesystem stays the single source of truth; Linear is the read-only mirror, kept in sync by spec-kit's own `after_*` hooks plus local git hooks plus a GitHub Actions webhook.
+**Keep Linear in sync with your spec-driven project, automatically.** Every spec on disk becomes a Linear issue (and every task phase a sub-issue), so you can see — and steer — every active spec across every repo from one place. You keep working in your files as usual; the bridge mirrors them into Linear for you and keeps it current as you plan, build, and merge. Your files stay the single source of truth — Linear is the always-up-to-date view, never something you edit by hand.
 
-- **Version:** 0.1.0
+- **Version:** 0.2.0
 - **Repository:** <https://github.com/ashbrener/spec-kit-linear>
 - **License:** MIT
 - **Requires:** Spec Kit ≥ 0.1.0 · bash 4+ · `curl` · `jq` · `gh` (optional) · `git`
