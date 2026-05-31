@@ -2637,10 +2637,13 @@ reconcile::_linear_phase_token() {
 #     * phase_drift = ordinal(linear) > ordinal(disk), STRICTLY. Skipped
 #       (treated false) when either ordinal is the UNKNOWN sentinel
 #       (uninferrable disk phase, or Linear issue with no derivable phase).
-#     * recency_drift = (linear_epoch - disk_epoch) > SKEW. false when the
-#       disk recency is `unavailable` (Edge Case 1) or the Linear updatedAt
-#       is missing/unparseable (degrade to phase alone, never fabricate).
-#     * fired = phase_drift OR recency_drift.
+#     * recency_drift = phase_drift AND (linear_epoch - disk_epoch) > SKEW.
+#       Recency CORROBORATES a phase drift, never fires alone (#01): it is
+#       false whenever phase_drift is false, when the disk recency is
+#       `unavailable` (Edge Case 1), or when the Linear updatedAt is
+#       missing/unparseable (degrade to phase alone, never fabricate).
+#     * fired = phase_drift (recency only sharpens it; with phase_drift=0,
+#       recency is forced false, so fired == phase_drift).
 #     * signals = csv of {phase_ordering, recency} that fired ("" when none).
 #     * Absent Linear Issue (empty/`{}`/non-object JSON, US2 first reconcile)
 #       → nothing to be ahead of → fired=0 (drift-detection-graphql §5 row 3).
