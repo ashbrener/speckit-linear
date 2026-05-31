@@ -30,7 +30,7 @@ Two reconcile/install bug fixes surfaced by downstream dogfood, plus the governa
 
 ### Changed — Governance
 
-- **Constitution amended to v2.0.0 (#13)** — Principle IV redefined from "Write-Authority Follows The Worktree" (branch-gate enforcement) to **"Write-Authority Follows The Filesystem (Drift-Aware)"**: any worktree may write; the bridge surfaces backward-drift but does not block (Principle VIII). This is a backward-incompatible _governance_ change (hence the constitution's MAJOR bump) that enables spec 003; it does **not** alter extension runtime behavior in this release — the drift-aware reconcile logic ships when spec 003 is implemented. The extension version line (0.1.2) and the constitution version line (2.0.0) are independent.
+- **Constitution amended to v2.0.0 (#13)** — Principle IV redefined from "Write-Authority Follows The Worktree" (branch-gate enforcement) to **"Write-Authority Follows The Filesystem (Drift-Aware)"**: any worktree may write; the bridge surfaces backward-drift but does not block (Principle VIII). This is a backward-incompatible *governance* change (hence the constitution's MAJOR bump) that enables spec 003; it does **not** alter extension runtime behavior in this release — the drift-aware reconcile logic ships when spec 003 is implemented. The extension version line (0.1.2) and the constitution version line (2.0.0) are independent.
 
 ### Added — Tooling & docs
 
