@@ -2690,7 +2690,8 @@ reconcile::compute_drift() {
     disk_ord="$(reconcile::_phase_ordinal "$disk_phase_token")"
     linear_ord="$(reconcile::_phase_ordinal "$linear_phase_token")"
     # Skip the phase signal when EITHER ordinal is unknown (uninferrable disk
-    # phase, or a Linear issue with no derivable phase) — recency alone then.
+    # phase, or a Linear issue with no derivable phase). With no phase drift,
+    # nothing fires — recency only corroborates a phase drift, never alone (#01).
     if (( disk_ord != RECONCILE_PHASE_ORDINAL_UNKNOWN )) \
         && (( linear_ord != RECONCILE_PHASE_ORDINAL_UNKNOWN )) \
         && (( linear_ord > disk_ord )); then
@@ -2832,11 +2833,27 @@ reconcile::_fetch_drift_issue_json() {
         >/dev/null 2>&1; then
         return 3
     fi
-    # Freshest match wins (matches query_spec_issue's FR-004b ordering).
-    # Empty nodes → no output, rc 0 → genuinely absent (US2 first reconcile).
-    printf '%s' "$response" \
+    # `.data.issues.nodes` must be absent (→ treat as empty, genuinely absent)
+    # or an array. A structurally-malformed-but-parseable body (e.g. nodes is a
+    # number) is "unavailable", NOT "absent" — without this guard sort_by would
+    # error, get swallowed, and an --on-drift=abort run would overwrite a
+    # state we never actually read (#02 follow-up).
+    if ! printf '%s' "$response" \
+        | jq -e '(.data.issues.nodes == null) or (.data.issues.nodes | type == "array")' \
+            >/dev/null 2>&1; then
+        return 3
+    fi
+    # Freshest match wins (matches query_spec_issue's FR-004b ordering). A jq
+    # failure here is a real fault, not "absent" — surface it as unavailable
+    # (no `|| true` mask). Empty nodes → no output, rc 0 → genuinely absent
+    # (US2 first reconcile).
+    local node
+    if ! node="$(printf '%s' "$response" \
         | jq -c '(.data.issues.nodes // []) | sort_by(.updatedAt) | reverse | (.[0] // empty)' \
-            2>/dev/null || true
+            2>/dev/null)"; then
+        return 3
+    fi
+    printf '%s' "$node"
 }
 
 # reconcile::_emit_drift_warning <feature_number> <verdict_line>   (T325)
@@ -3146,8 +3163,16 @@ reconcile::process_spec() {
     # (forward / equal / no-drift) the write proceeds SILENTLY — no
     # prompt, no warning (SC-017, the zero-false-positive path).
     local drift_issue_json drift_verdict drift_fired drift_disp drift_fetch_rc
-    drift_issue_json="$(reconcile::_fetch_drift_issue_json "$feature_number" 2>/dev/null)"
-    drift_fetch_rc=$?
+    # Capture the fetch rc via if/else, NOT a bare `x=$(...); rc=$?`: under
+    # `set -e` a bare assignment whose command substitution exits non-zero
+    # aborts the whole reconcile BEFORE the `rc=$?` line runs — so an
+    # unreadable Linear (rc 3) would crash the run instead of failing closed.
+    # An assignment in an `if` condition is the documented set -e exemption.
+    if drift_issue_json="$(reconcile::_fetch_drift_issue_json "$feature_number" 2>/dev/null)"; then
+        drift_fetch_rc=0
+    else
+        drift_fetch_rc=$?
+    fi
     # rc 3 = Linear was unreadable (transport / GraphQL errors / malformed),
     # which is NOT the same as "Issue absent". Drift stays advisory by
     # default (fall through, treat as absent, proceed), but an explicit
