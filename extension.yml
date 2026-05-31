@@ -51,7 +51,7 @@ extension:
 
   # One-line description — matches the GitHub repo description so the
   # catalog entry and the README cover read the same way.
-  description: "Mirror spec-kit feature directories into Linear (filesystem → Linear, reconcile-based, unidirectional)."
+  description: "Automatically mirror your spec-kit specs into Linear — one issue per spec, a sub-issue per task phase, kept in sync as you work."
 
   # Optional fields — author + repo make the manifest self-describing.
   author: "Ash Brener"
